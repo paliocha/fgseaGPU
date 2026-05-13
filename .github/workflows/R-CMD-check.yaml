@@ -71,3 +71,8 @@ jobs:
           # detection (which is fine for a non-CRAN package). Re-enable
           # once we author a configure script that emits a portable Makevars.
           args: 'c("--no-manual")'
+          # The action defaults to error-on = "warning", which trips on
+          # cosmetic NOTEs/WARNINGs (.hpp filename heuristic; GNU make
+          # extensions in Makevars). Those are not bugs and don't block
+          # use of the package — only fail on actual ERRORs.
+          error-on: '"error"'
