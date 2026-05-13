@@ -65,10 +65,61 @@ RcppExport SEXP _fsgeaGPU_fsgea_backend_info_cpp()
     END_RCPP
 }
 
+// fsgea_multilevel_cpp
+List fsgea_multilevel_cpp(NumericVector, List, CharacterVector, double, std::string,
+                          int, double, double, int, int, int);
+RcppExport SEXP _fsgeaGPU_fsgea_multilevel_cpp(
+    SEXP statsSEXP, SEXP pathwaysSEXP, SEXP namesSEXP,
+    SEXP gseaParamSEXP, SEXP scoreTypeSEXP, SEXP sampleSizeSEXP,
+    SEXP epsSEXP, SEXP moveScaleSEXP, SEXP seedSEXP,
+    SEXP minSizeSEXP, SEXP maxSizeSEXP)
+{
+    BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(fsgea_multilevel_cpp(
+        as<NumericVector>(statsSEXP),
+        as<List>(pathwaysSEXP),
+        as<CharacterVector>(namesSEXP),
+        as<double>(gseaParamSEXP),
+        as<std::string>(scoreTypeSEXP),
+        as<int>(sampleSizeSEXP),
+        as<double>(epsSEXP),
+        as<double>(moveScaleSEXP),
+        as<int>(seedSEXP),
+        as<int>(minSizeSEXP),
+        as<int>(maxSizeSEXP)));
+    return rcpp_result_gen;
+    END_RCPP
+}
+
+// fsgea_fora_cpp
+List fsgea_fora_cpp(int, int, IntegerVector, List, CharacterVector, int, int);
+RcppExport SEXP _fsgeaGPU_fsgea_fora_cpp(
+    SEXP universeSEXP, SEXP querySizeSEXP, SEXP querySEXP,
+    SEXP pathwaysSEXP, SEXP namesSEXP, SEXP minSizeSEXP, SEXP maxSizeSEXP)
+{
+    BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(fsgea_fora_cpp(
+        as<int>(universeSEXP),
+        as<int>(querySizeSEXP),
+        as<IntegerVector>(querySEXP),
+        as<List>(pathwaysSEXP),
+        as<CharacterVector>(namesSEXP),
+        as<int>(minSizeSEXP),
+        as<int>(maxSizeSEXP)));
+    return rcpp_result_gen;
+    END_RCPP
+}
+
 static const R_CallMethodDef CallEntries[] = {
     {"_fsgeaGPU_fsgea_run_cpp",            (DL_FUNC) &_fsgeaGPU_fsgea_run_cpp,            11},
     {"_fsgeaGPU_fsgea_calc_gsea_stat_cpp", (DL_FUNC) &_fsgeaGPU_fsgea_calc_gsea_stat_cpp,  4},
     {"_fsgeaGPU_fsgea_backend_info_cpp",   (DL_FUNC) &_fsgeaGPU_fsgea_backend_info_cpp,    0},
+    {"_fsgeaGPU_fsgea_multilevel_cpp",     (DL_FUNC) &_fsgeaGPU_fsgea_multilevel_cpp,     11},
+    {"_fsgeaGPU_fsgea_fora_cpp",           (DL_FUNC) &_fsgeaGPU_fsgea_fora_cpp,            7},
     {nullptr, nullptr, 0}
 };
 

@@ -64,9 +64,18 @@ inline ObservedEs observedEs(
     ScoreType scoreType)
 {
     auto r = calcEs(stats, positions, gseaParam, scoreType);
-    ObservedEs res{r.es, {}};
-    if (r.leadingEdgeEnd < 0) return res;
+    if (r.leadingEdgeEnd < 0) {
+        // Either the gene set is empty/degenerate, or every running-sum
+        // extremum is exactly zero. Both are pathological: the leading edge
+        // is undefined and any downstream interpretation would be misleading.
+        throw std::domain_error(
+            "fsgea: observed enrichment score is zero for this gene set; "
+            "the leading edge is undefined. Check that the gene set has "
+            "non-zero overlap with `stats` and that not all member statistics "
+            "are zero.");
+    }
 
+    ObservedEs res{r.es, {}};
     // Leading-edge subset: members up to and including the extremum, taken
     // from whichever end matches the sign of ES. For positive ES, that's the
     // first (leadingEdgeEnd + 1) positions of `positions`. For negative ES,

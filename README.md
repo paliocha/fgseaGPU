@@ -69,22 +69,42 @@ The package auto-detects MPS at runtime.
 
 ## Usage
 
+Three entry points mirror the upstream API:
+
 ```r
 library(fsgeaGPU)
 data(examplePathways, package = "fgsea")
 data(exampleRanks,    package = "fgsea")
 
-res <- fgsea(pathways = examplePathways,
-             stats    = exampleRanks,
-             nperm    = 10000,
-             device   = "auto")     # picks CUDA > MPS > CPU automatically
+# Multilevel (default): accurate small p-values, CPU-parallel across pathways
+res <- fgsea(examplePathways, exampleRanks)
 
-head(res[order(pval)])
+# Simple permutation null: GPU-accelerated when LibTorch is built in
+res_simple <- fgseaSimple(examplePathways, exampleRanks,
+                          nperm = 10000, device = "auto")
+
+# Over-representation analysis (Fisher / hypergeometric)
+foraRes <- fora(examplePathways,
+                genes    = tail(names(exampleRanks), 200),
+                universe = names(exampleRanks))
 ```
 
-The output columns are identical in name, type, and ordering to
-`fgsea::fgseaSimple`'s — pipelines that key off those columns work
-unchanged.
+Routing rule: `fgsea(...)` delegates to `fgseaMultilevel` by default, or to
+`fgseaSimple` if you supply `nperm` — matching the upstream convention.
+
+| Entry point        | Best for                              | Backend           |
+|--------------------|---------------------------------------|-------------------|
+| `fgseaSimple`      | Many permutations, large pathways     | GPU (LibTorch)    |
+| `fgseaMultilevel`  | Accurate small p-values (down to eps) | CPU `par_unseq`   |
+| `fora`             | Set-based over-representation         | CPU `par_unseq`   |
+
+## Why no GPU for multilevel?
+
+Multilevel splitting builds dependent MCMC chains: each move conditions on
+the previous state, so a single chain can't be vectorised onto a GPU
+thread block. We instead parallelise across *pathways* with
+`std::execution::par_unseq`, which scales linearly to the number of CPU
+cores for typical pathway counts (5k–25k).
 
 ## Algorithm notes
 
@@ -102,11 +122,14 @@ unchanged.
 
 ## Differences vs upstream `fgsea`
 
-- No `fgseaMultilevel` yet — only the simple permutation variant. The
-  multilevel adaptive splitting algorithm is on the roadmap.
-- No `fora` (over-representation) yet.
-- No leading-edge for `scoreType = "neg"` corner cases when ES is
-  exactly zero; we return an empty vector instead of erroring.
+- A zero observed ES (degenerate gene set, all-zero member statistics)
+  raises a `domain_error` rather than silently returning an empty leading
+  edge — fail loud is friendlier than fail quiet here.
+- `fgseaMultilevel` exposes a `floored` flag indicating whether the
+  reported p-value hit the `eps` floor before the level threshold
+  bracketed the observed ES.
+- `geseca`, `collapsePathways`, plotting helpers and the gene-set
+  preparation utilities are not yet ported.
 
 ## Pushing to GitHub
 

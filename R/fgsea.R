@@ -1,66 +1,92 @@
 #' fsgeaGPU: GPU-accelerated fast gene set enrichment analysis
 #'
-#' Drop-in re-implementation of the upstream \pkg{fgsea} algorithm with
+#' Drop-in re-implementation of the upstream \pkg{fgsea} algorithms with
 #' a Torch backend that runs the embarrassingly-parallel permutation null
-#' on CUDA, ROCm or Apple Metal devices when available.
+#' on CUDA, ROCm or Apple Metal devices when available, plus the adaptive
+#' multilevel splitting algorithm for accurate small p-values, and the
+#' hypergeometric over-representation test \code{fora()}.
 #'
 #' @keywords internal
 "_PACKAGE"
 
-#' Run preranked gene set enrichment analysis
+# ---- helpers ----------------------------------------------------------------
+
+.prepareStats <- function(stats) {
+    stopifnot(is.numeric(stats), !is.null(names(stats)))
+    ord <- order(-stats)
+    stats[ord]
+}
+
+.pathwayPositions <- function(pathways, stats) {
+    lapply(pathways, function(genes) {
+        idx <- fastmatch::fmatch(genes, names(stats))
+        idx <- idx[!is.na(idx)]
+        sort.int(as.integer(idx - 1L))
+    })
+}
+
+# ---- public API -------------------------------------------------------------
+
+#' Preranked gene set enrichment analysis
+#'
+#' Routes to \code{\link{fgseaSimple}} when \code{nperm} is supplied
+#' (matching the upstream signal that the user wants the permutation
+#' implementation) and to \code{\link{fgseaMultilevel}} otherwise. The
+#' returned \code{data.table} has the same column schema as upstream
+#' \code{fgsea::fgsea}.
+#'
+#' @inheritParams fgseaSimple
+#' @param ... Passed through to the chosen implementation. Use \code{nperm}
+#'   to force the simple permutation path; otherwise the multilevel path
+#'   is used.
+#' @export
+fgsea <- function(pathways, stats,
+                  minSize   = 1L,
+                  maxSize   = length(stats) - 1L,
+                  gseaParam = 1, ...) {
+    args <- list(...)
+    if ("nperm" %in% names(args)) {
+        fgseaSimple(pathways = pathways, stats = stats,
+                    minSize = minSize, maxSize = maxSize,
+                    gseaParam = gseaParam, ...)
+    } else {
+        fgseaMultilevel(pathways = pathways, stats = stats,
+                        minSize = minSize, maxSize = maxSize,
+                        gseaParam = gseaParam, ...)
+    }
+}
+
+#' Simple permutation-null GSEA on CPU/GPU
 #'
 #' @param pathways Named list of character vectors; each element is a gene set.
 #' @param stats Named numeric vector of gene-level statistics. Names must
 #'   match the gene identifiers in \code{pathways}.
-#' @param nperm Number of permutations for the empirical null. Larger is more
-#'   accurate but linearly more expensive. GPU backend handles 1e6 cheaply.
+#' @param nperm Number of permutations for the empirical null.
 #' @param minSize,maxSize Filter gene sets by intersected size with \code{stats}.
-#' @param gseaParam GSEA weighting exponent (default \code{1}; \code{0} is
-#'   unweighted Kolmogorov-Smirnov).
+#' @param gseaParam GSEA weighting exponent.
 #' @param scoreType One of \code{"std"}, \code{"pos"}, \code{"neg"}.
 #' @param seed Integer seed for reproducibility.
 #' @param device One of \code{"auto"}, \code{"cpu"}, \code{"cuda"}, \code{"mps"},
-#'   \code{"rocm"}. Falls back to CPU if the requested device is unavailable.
-#' @param gpuMemoryGiB Memory budget for the GPU permutation tensor in
-#'   gibibytes. Permutations are mini-batched under this budget.
-#' @return A \code{data.table} with one row per tested pathway, columns
-#'   \code{pathway, pval, padj, ES, NES, nMoreExtreme, size, leadingEdge}.
-#'   Column order and meaning match the upstream \code{fgsea::fgseaSimple}.
+#'   \code{"rocm"}.
+#' @param gpuMemoryGiB GPU permutation tensor memory budget.
+#' @return A \code{data.table} matching \code{fgsea::fgseaSimple}'s columns.
 #' @export
-fgsea <- function(pathways,
-                  stats,
-                  nperm        = 1000L,
-                  minSize      = 1L,
-                  maxSize      = length(stats) - 1L,
-                  gseaParam    = 1,
-                  scoreType    = c("std", "pos", "neg"),
-                  seed         = 42L,
-                  device       = c("auto", "cpu", "cuda", "mps", "rocm"),
-                  gpuMemoryGiB = 2) {
-
+fgseaSimple <- function(pathways,
+                        stats,
+                        nperm        = 1000L,
+                        minSize      = 1L,
+                        maxSize      = length(stats) - 1L,
+                        gseaParam    = 1,
+                        scoreType    = c("std", "pos", "neg"),
+                        seed         = 42L,
+                        device       = c("auto", "cpu", "cuda", "mps", "rocm"),
+                        gpuMemoryGiB = 2) {
     scoreType <- match.arg(scoreType)
     device    <- match.arg(device)
-    stopifnot(
-        is.list(pathways),
-        is.numeric(stats),
-        !is.null(names(stats)),
-        nperm >= 1L,
-        gseaParam >= 0
-    )
+    stopifnot(is.list(pathways), nperm >= 1L, gseaParam >= 0)
 
-    # Sort stats decreasing — required by the algorithm.
-    ord    <- order(-stats)
-    stats  <- stats[ord]
-
-    # Map pathway gene IDs onto zero-based positions in `stats`. Use fastmatch
-    # for the hot lookup. Drop NAs (genes not in stats) and sort.
-    gene_index <- fastmatch::fmatch
-    positions_z <- lapply(pathways, function(genes) {
-        idx <- gene_index(genes, names(stats))
-        idx <- idx[!is.na(idx)]
-        sort.int(as.integer(idx - 1L))
-    })
-    names(positions_z) <- names(pathways)
+    stats <- .prepareStats(stats)
+    positions_z <- .pathwayPositions(pathways, stats)
 
     res <- .Call("_fsgeaGPU_fsgea_run_cpp",
                  as.numeric(stats),
@@ -76,9 +102,7 @@ fgsea <- function(pathways,
                  as.numeric(gpuMemoryGiB),
                  PACKAGE = "fsgeaGPU")
 
-    # Translate zero-based gene positions in leadingEdge into gene names.
     le_names <- lapply(res$leadingEdge, function(idx) names(stats)[idx])
-
     out <- data.table::data.table(
         pathway      = res$pathway,
         pval         = res$pval,
@@ -93,17 +117,134 @@ fgsea <- function(pathways,
     out
 }
 
-#' Calculate the enrichment score for a single gene set
+#' Adaptive multilevel splitting Monte Carlo GSEA
 #'
-#' Equivalent to \code{fgsea::calcGseaStat} with the cumulative variant
-#' disabled. Returns the signed ES.
+#' Computes accurate small p-values via the Korotkevich et al. multilevel
+#' splitting algorithm. Parallelised across pathways with
+#' \code{std::execution::par_unseq}. The GPU backend doesn't speed this up
+#' because each MCMC chain is inherently sequential.
+#'
+#' @param pathways,stats,minSize,maxSize,gseaParam,scoreType,seed See
+#'   \code{\link{fgseaSimple}}.
+#' @param sampleSize Number of chains per level. Must be odd and >= 3.
+#'   Increase for tighter \code{log2err}.
+#' @param eps P-values below this floor are returned as \code{eps} with the
+#'   \code{floored} flag set. Default \code{1e-50}.
+#' @param moveScale MCMC moves per level scale factor. Larger = better
+#'   mixing, more work.
+#' @return A \code{data.table} with columns \code{pathway, pval, padj,
+#'   log2err, ES, NES, size, leadingEdge, floored}.
+#' @export
+fgseaMultilevel <- function(pathways,
+                            stats,
+                            sampleSize = 101L,
+                            minSize    = 1L,
+                            maxSize    = length(stats) - 1L,
+                            eps        = 1e-50,
+                            gseaParam  = 1,
+                            scoreType  = c("std", "pos", "neg"),
+                            seed       = 42L,
+                            moveScale  = 1.0) {
+    scoreType <- match.arg(scoreType)
+    stopifnot(is.list(pathways), sampleSize >= 3, sampleSize %% 2 == 1,
+              eps > 0, eps <= 1, gseaParam >= 0)
+
+    stats <- .prepareStats(stats)
+    positions_z <- .pathwayPositions(pathways, stats)
+
+    res <- .Call("_fsgeaGPU_fsgea_multilevel_cpp",
+                 as.numeric(stats),
+                 positions_z,
+                 as.character(names(pathways)),
+                 as.numeric(gseaParam),
+                 scoreType,
+                 as.integer(sampleSize),
+                 as.numeric(eps),
+                 as.numeric(moveScale),
+                 as.integer(seed),
+                 as.integer(minSize),
+                 as.integer(maxSize),
+                 PACKAGE = "fsgeaGPU")
+
+    le_names <- lapply(res$leadingEdge, function(idx) names(stats)[idx])
+    out <- data.table::data.table(
+        pathway     = res$pathway,
+        pval        = res$pval,
+        padj        = res$padj,
+        log2err     = res$log2err,
+        ES          = res$ES,
+        NES         = res$NES,
+        size        = res$size,
+        leadingEdge = le_names,
+        floored     = res$floored
+    )
+    data.table::setorder(out, pval, -ES)
+    out
+}
+
+#' Over-representation analysis via the hypergeometric tail
+#'
+#' For each pathway, computes \code{P(X >= overlap)} where \code{X} is the
+#' size of the intersection between \code{genes} and the pathway under
+#' uniform sampling from \code{universe}.
+#'
+#' @param pathways Named list of character vectors.
+#' @param genes Character vector of query genes (e.g. differentially
+#'   expressed).
+#' @param universe Character vector of all background genes.
+#' @param minSize,maxSize Size filters on pathways (post-intersection
+#'   with \code{universe}).
+#' @return A \code{data.table} with columns \code{pathway, pval, padj,
+#'   foldEnrichment, overlap, size, overlapGenes}.
+#' @export
+fora <- function(pathways, genes, universe,
+                 minSize = 1L,
+                 maxSize = length(universe) - 1L) {
+    stopifnot(is.list(pathways), is.character(genes), is.character(universe))
+
+    if (!all(genes %in% universe)) {
+        warning("Not all query genes belong to the universe; extras removed.")
+    }
+
+    universe <- unique(universe)
+    queryIdx <- unique(stats::na.omit(fastmatch::fmatch(genes, universe)))
+    pathwayPositions <- lapply(pathways, function(pw) {
+        idx <- fastmatch::fmatch(pw, universe)
+        sort.int(as.integer(stats::na.omit(idx) - 1L))
+    })
+
+    res <- .Call("_fsgeaGPU_fsgea_fora_cpp",
+                 as.integer(length(universe)),
+                 as.integer(length(queryIdx)),
+                 as.integer(queryIdx - 1L),
+                 pathwayPositions,
+                 as.character(names(pathways)),
+                 as.integer(minSize),
+                 as.integer(maxSize),
+                 PACKAGE = "fsgeaGPU")
+
+    overlapGeneNames <- lapply(res$overlapGenes, function(idx) universe[idx])
+    out <- data.table::data.table(
+        pathway        = res$pathway,
+        pval           = res$pval,
+        padj           = res$padj,
+        foldEnrichment = res$foldEnrichment,
+        overlap        = res$overlap,
+        size           = res$size,
+        overlapGenes   = overlapGeneNames
+    )
+    data.table::setorder(out, pval)
+    out
+}
+
+#' Calculate the enrichment score for a single gene set
 #'
 #' @param stats Numeric vector of gene-level statistics, sorted decreasing.
 #' @param selectedStats Integer positions of the gene set in \code{stats}
-#'   (1-based, as in the upstream package).
+#'   (1-based).
 #' @param gseaParam GSEA weighting exponent.
 #' @param scoreType One of \code{"std"}, \code{"pos"}, \code{"neg"}.
-#' @return A single numeric: the enrichment score.
+#' @return Numeric: the enrichment score.
 #' @export
 calcGseaStat <- function(stats,
                          selectedStats,
@@ -120,8 +261,8 @@ calcGseaStat <- function(stats,
 
 #' Query or set the default execution device
 #'
-#' @param device Optional device hint to set as the package default. If
-#'   missing, returns the current default.
+#' @param device Optional device hint. Returns the current default when
+#'   missing.
 #' @return The resolved device string.
 #' @export
 fsgeaDevice <- local({
