@@ -1,0 +1,41 @@
+Package: fsgeaGPU
+Title: GPU-Accelerated Fast Gene Set Enrichment Analysis
+Version: 0.1.0
+Authors@R: c(
+    person("Martin", "Paliocha", email = "martin.paliocha@nmbu.no",
+           role = c("aut", "cre")),
+    person("Gennady", "Korotkevich", role = "ctb",
+           comment = "Original fgsea algorithm"),
+    person("Alexey", "Sergushichev", role = "ctb",
+           comment = "Original fgsea author"))
+Description: A GPU/Torch-backed re-implementation of the fast gene set
+    enrichment analysis algorithm of Korotkevich et al. (2021). The
+    permutation null distribution and per-pathway enrichment scores are
+    computed in batched tensor operations that run on CUDA, ROCm or
+    Apple Metal devices via LibTorch, with a portable C++23
+    'std::execution' CPU fallback. The R interface mirrors the public
+    surface of the upstream 'fgsea' package, so existing pipelines can
+    swap implementations by changing one import.
+biocViews: GeneExpression, DifferentialExpression, GeneSetEnrichment, Pathways
+Depends:
+    R (>= 4.3)
+Imports:
+    Rcpp (>= 1.0.12),
+    data.table,
+    fastmatch,
+    stats,
+    utils
+Suggests:
+    testthat (>= 3.0.0),
+    fgsea,
+    knitr,
+    rmarkdown,
+    torch
+LinkingTo: Rcpp
+SystemRequirements: C++23, LibTorch (>= 2.2) for GPU support, CMake (>= 3.24)
+License: MIT + file LICENSE
+URL: https://github.com/paliocha/fsgea-gpu
+BugReports: https://github.com/paliocha/fsgea-gpu/issues
+Encoding: UTF-8
+RoxygenNote: 7.3.3
+Config/testthat/edition: 3
