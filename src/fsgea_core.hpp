@@ -133,6 +133,16 @@ struct EsResult {
     double const negStep = 1.0 / static_cast<double>(n - k);
     double const invNR   = 1.0 / nr;
 
+    // Within a gap between two consecutive members the running sum drops
+    // monotonically by negStep per non-member rank; the minimum in that gap
+    // is reached *after* the negative drift but *before* the next positive
+    // weight is applied. So we must inspect `cur` at two points per member:
+    // (1) post-drift (deepest negative point this iteration can produce),
+    // (2) post-weight (highest positive point this iteration can produce).
+    // Folding both into one check after both updates loses the negative
+    // trough whenever the immediate positive bounce is large enough to
+    // dominate it — which is exactly the case for set members concentrated
+    // at the bottom of the ranking (e.g. an anti-correlated gene set).
     auto walk = [&](auto better) -> EsResult {
         Accumulator acc;
         double best = 0.0;
@@ -140,7 +150,12 @@ struct EsResult {
         std::int64_t prev = -1;
         std::int32_t i    = 0;
         for (auto pos : positions) {
-            acc.add(-negStep * static_cast<double>(pos - prev - 1));
+            auto const gap = static_cast<double>(pos - prev - 1);
+            if (gap > 0.0) {
+                acc.add(-negStep * gap);
+                double const dip = acc.value();
+                if (better(dip, best)) { best = dip; bestIdx = i; }
+            }
             acc.add(weight(stats[pos]) * invNR);
             double const cur = acc.value();
             if (better(cur, best)) { best = cur; bestIdx = i; }
