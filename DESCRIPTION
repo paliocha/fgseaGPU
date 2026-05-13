@@ -12,7 +12,7 @@ Description: A GPU/Torch-backed re-implementation of the fast gene set
     enrichment analysis algorithm of Korotkevich et al. (2021). The
     permutation null distribution and per-pathway enrichment scores are
     computed in batched tensor operations that run on CUDA, ROCm or
-    Apple Metal devices via LibTorch, with a portable C++23
+    Apple Metal devices via LibTorch, with a portable C++20
     'std::execution' CPU fallback. The R interface mirrors the public
     surface of the upstream 'fgsea' package, so existing pipelines can
     swap implementations by changing one import.
