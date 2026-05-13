@@ -24,7 +24,7 @@ test_that("fgsea returns the right shape", {
 test_that("top/bottom pathways have opposite-sign ES", {
     ex <- make_example()
     res <- fgsea(ex$pathways, ex$stats, nperm = 500, seed = 7, device = "cpu")
-    setkey(res, pathway)
+    data.table::setkey(res, pathway)
     expect_gt(res["top",    ES], 0)
     expect_lt(res["bottom", ES], 0)
 })
@@ -51,7 +51,7 @@ test_that("GPU and CPU agree on observed ES (deterministic) within float toleran
     ex <- make_example()
     rc <- fgsea(ex$pathways, ex$stats, nperm = 100, seed = 1, device = "cpu")
     rg <- fgsea(ex$pathways, ex$stats, nperm = 100, seed = 1, device = "auto")
-    setkey(rc, pathway); setkey(rg, pathway)
+    data.table::setkey(rc, pathway); data.table::setkey(rg, pathway)
     expect_equal(rc$ES, rg$ES, tolerance = 1e-9)
 })
 
@@ -60,10 +60,10 @@ test_that("fgsea matches upstream fgsea::fgseaSimple where available", {
     ex <- make_example(n = 300)
     ours <- fgsea(ex$pathways, ex$stats, nperm = 2000, seed = 99, device = "cpu")
     theirs <- fgsea::fgseaSimple(
-        pathways = ex$pathways, stats = ex$stats,
-        nperm    = 2000, minSize = 1, maxSize = length(ex$stats),
-        scoreType = "std", BPPARAM = BiocParallel::SerialParam())
-    setkey(ours, pathway); setkey(theirs, pathway)
+        pathways  = ex$pathways, stats = ex$stats,
+        nperm     = 2000, minSize = 1, maxSize = length(ex$stats),
+        scoreType = "std")
+    data.table::setkey(ours, pathway); data.table::setkey(theirs, pathway)
     # ES is deterministic given the same inputs; p-values converge with nperm.
     expect_equal(ours[theirs$pathway, ES], theirs$ES, tolerance = 1e-9)
     expect_lt(max(abs(ours[theirs$pathway, pval] - theirs$pval)), 0.05)

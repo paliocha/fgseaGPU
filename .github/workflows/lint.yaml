@@ -1,8 +1,8 @@
 name: Lint
 
 # R lintr + C++ clang-tidy. Both are advisory: warnings show up in the
-# Actions log and the PR annotations, but don't fail the build until the
-# project decides on a stricter style baseline.
+# Actions log and as PR annotations, but the workflow always exits cleanly
+# until the project decides on a stricter style baseline.
 
 on:
   push:
@@ -25,16 +25,26 @@ jobs:
         with:
           use-public-rspm: true
 
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libtbb-dev
+
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::lintr, local::.
+          extra-packages: any::lintr
           needs: lint
 
-      - name: lintr
-        run: lintr::lint_package()
+      - name: Run lintr (advisory)
+        run: |
+          lints <- lintr::lint_package()
+          if (length(lints) > 0) {
+              print(lints)
+              cat("\nFound", length(lints), "lint(s). Advisory — not failing the build.\n")
+          } else {
+              cat("No lints found.\n")
+          }
         shell: Rscript {0}
-        env:
-          LINTR_ERROR_ON_LINT: 'false'
 
   cpp-tidy:
     runs-on: ubuntu-latest
@@ -56,9 +66,6 @@ jobs:
 
       - name: clang-tidy (advisory)
         run: |
-          # Report warnings on every translation unit in the project, but
-          # exit cleanly. Tighten with `-warnings-as-errors=*` once the
-          # codebase reaches a steady-state style.
-          shopt -s globstar nullglob
+          shopt -s nullglob
           clang-tidy -p build --quiet \
               bench/*.cpp src/*.cpp tests/cpp/*.cpp || true

@@ -23,8 +23,7 @@ Imports:
     Rcpp (>= 1.0.12),
     data.table,
     fastmatch,
-    stats,
-    utils
+    stats
 Suggests:
     testthat (>= 3.0.0),
     fgsea,

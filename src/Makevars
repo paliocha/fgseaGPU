@@ -1,20 +1,43 @@
-# Makevars — built for R CMD INSTALL. The Torch backend is opt-in via
-# FSGEA_TORCH=1 and FSGEA_TORCH_HOME pointing at an unpacked LibTorch
-# distribution. Without those, the package still builds CPU-only.
+# Makevars — POSIX build (Linux, macOS).
+#
+# TBB powers std::execution::par_unseq under libstdc++. We detect it first
+# via pkg-config (works on every Linux distro and macOS-with-Homebrew that
+# has pkg-config on PATH), then fall back to Homebrew's prefix on macOS,
+# then to a bare `-ltbb` on the assumption that the linker can find it.
+#
+# The optional Torch backend is enabled by setting FSGEA_TORCH=1 and
+# pointing FSGEA_TORCH_HOME at an unpacked LibTorch distribution.
 
 CXX_STD = CXX20
 
+# R provides its own optimization flags via Makeconf — don't override here;
+# CRAN forbids hard-coded -O3, -march=native, etc. in PKG_CXXFLAGS.
 PKG_CPPFLAGS = -I.
-PKG_CXXFLAGS = -O3 -Wall -Wextra -Wpedantic -fvisibility=hidden
 
-# Link the threading library for std::execution::par_unseq. On Linux this
-# additionally pulls in TBB which std::execution::par_unseq requires; users
-# without TBB will fall back to sequential execution silently (libstdc++)
-# or get a link error (libc++). Override TBB_LIBS to "" to disable.
-PKG_LIBS = $(SHLIB_OPENMP_CXXFLAGS) -lpthread
-TBB_LIBS ?= -ltbb
-PKG_LIBS += $(TBB_LIBS)
+# Threading
+PKG_LIBS = -lpthread
 
+# --- TBB detection ---------------------------------------------------------
+TBB_VIA_PKG_CONFIG := $(shell pkg-config --exists tbb && echo 1)
+ifeq ($(TBB_VIA_PKG_CONFIG),1)
+  PKG_CPPFLAGS += $(shell pkg-config --cflags tbb)
+  PKG_LIBS    += $(shell pkg-config --libs tbb)
+else
+  UNAME_S := $(shell uname -s)
+  ifeq ($(UNAME_S),Darwin)
+    BREW_TBB := $(shell brew --prefix tbb 2>/dev/null)
+    ifneq ($(BREW_TBB),)
+      PKG_CPPFLAGS += -I$(BREW_TBB)/include
+      PKG_LIBS    += -L$(BREW_TBB)/lib -ltbb
+    else
+      PKG_LIBS    += -ltbb
+    endif
+  else
+    PKG_LIBS += -ltbb
+  endif
+endif
+
+# --- Optional LibTorch backend --------------------------------------------
 ifeq ($(FSGEA_TORCH),1)
   ifndef FSGEA_TORCH_HOME
     $(error FSGEA_TORCH=1 requires FSGEA_TORCH_HOME to point at a LibTorch install)
