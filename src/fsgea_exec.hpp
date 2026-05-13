@@ -2,8 +2,7 @@
 //
 // libstdc++'s parallel std::execution implementation needs Intel TBB at
 // link time; macOS's libc++ either doesn't implement parallel policies
-// at all (pre-LLVM 17) or has rough edges on the Apple back-end; Rtools
-// on Windows ships neither TBB nor a working parallel backend.
+// at all (pre-LLVM 17) or has rough edges on the Apple back-end.
 //
 // To stay portable we route all `for_each` calls through `fsgea::par`,
 // which is `std::execution::par_unseq` when the build was configured

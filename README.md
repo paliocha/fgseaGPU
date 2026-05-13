@@ -40,8 +40,7 @@ fsgea-gpu/
 │   ├── fsgea_dispatch.hpp          # picks device, chunks batch
 │   ├── rcpp_glue.cpp               # R <-> C++ marshalling
 │   ├── RcppExports.cpp
-│   ├── Makevars                    # R build (POSIX)
-│   └── Makevars.win                # R build (Windows)
+│   └── Makevars                    # R build (Linux, macOS)
 ├── tests/testthat/                 # R-side tests, incl. vs upstream fgsea
 ├── tests/cpp/test_core.cpp         # standalone C++ unit tests
 ├── bench/fsgea_bench.cpp           # CLI benchmark
