@@ -33,6 +33,15 @@ else
   endif
 endif
 
+# --- Optional Neumaier compensated accumulation ---------------------------
+# Set FSGEA_PRECISE=1 to enable opt-in Neumaier-compensated summation in
+# calcEs's running-sum walk. Costs two extra fp adds per member; pays off
+# only when ES values cluster near zero in very large pathways or when
+# accumulating across 10^6+ permutations. The default is off.
+ifeq ($(FSGEA_PRECISE),1)
+  PKG_CPPFLAGS += -DFSGEA_PRECISE_ACCUM
+endif
+
 # --- Optional LibTorch backend --------------------------------------------
 ifeq ($(FSGEA_TORCH),1)
   ifndef FSGEA_TORCH_HOME

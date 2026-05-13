@@ -73,6 +73,22 @@ R CMD INSTALL .
 On macOS with Apple Silicon, install a LibTorch build with MPS enabled.
 The package auto-detects MPS at runtime.
 
+### Precise (Neumaier-compensated) ES accumulation
+
+The enrichment-score walk in `calcEs` uses naive `+=` summation by
+default, which is fast and accurate to ~1e-12 relative error for
+typical pathway sizes. If you're running 10⁶+ permutation studies on
+very large gene sets and want the accumulation precision pinned at
+one machine epsilon regardless of summand count, build with the
+opt-in Neumaier path:
+
+```bash
+FSGEA_PRECISE=1 R CMD INSTALL .
+```
+
+Cost when enabled: two extra floating-point adds and one compare per
+gene-set member walked. Combinable with `FSGEA_TORCH=1`.
+
 ## Usage
 
 Three entry points mirror the upstream API:
