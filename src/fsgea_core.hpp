@@ -161,6 +161,30 @@ struct PermSummary { double pval; double nes; std::int64_t nMoreExtreme; };
     return {p, nes, nMore};
 }
 
+// Gosper's hack (R. W. Gosper, HAKMEM 175, 1972; Knuth TAOCP Vol 4A §7.1.3).
+// Given a bitmask with `k` bits set, returns the lexicographically-next
+// bitmask of the same population count. Iterating from `(1<<k)-1` enumerates
+// every k-subset of [0, n) in C(n, k) steps with O(1) work per step — the
+// fastest known way to walk all fixed-weight binary words.
+[[nodiscard]] inline constexpr std::uint64_t gosperNext(std::uint64_t x) noexcept {
+    std::uint64_t const c = x & (~x + 1ULL);        // lowest set bit
+    std::uint64_t const r = x + c;                  // carry over the trailing run
+    return (((r ^ x) >> 2) / c) | r;
+}
+
+// Binomial coefficient via the multiplicative formula. Stable enough for the
+// range we care about (n ≤ 64, k ≤ n/2); overflow checked by the caller.
+[[nodiscard]] inline constexpr double binomial(std::int64_t n,
+                                               std::int64_t k) noexcept {
+    if (k < 0 || k > n) return 0.0;
+    if (k > n - k) k = n - k;
+    double r = 1.0;
+    for (std::int64_t i = 1; i <= k; ++i) {
+        r *= static_cast<double>(n - i + 1) / static_cast<double>(i);
+    }
+    return r;
+}
+
 // SplitMix64 (Steele, Lea, Flood). A single round of avalanche over a 64-bit
 // integer. We use it as a deterministic seed mixer — given a master seed and
 // a permutation index, splitmix(seed ^ idx) gives a high-entropy per-task

@@ -210,6 +210,62 @@ void test_phenotype_recovers_obvious_signal() {
     assert(res[0].pval > 0 && res[0].pval <= 1);
 }
 
+void test_phenotype_exact_via_gosper() {
+    // Tiny experiment: 12 samples (6 per class). C(12, 6) = 924 — well
+    // below the exact-mode threshold of 50000, so Gosper's hack should
+    // enumerate every distinct labeling and produce a deterministic
+    // (Monte-Carlo-free) p-value. Re-running with a different seed must
+    // give bit-identical results.
+    constexpr std::int64_t G = 80, S = 12;
+    fsgea::phenotype::Input in;
+    in.n_genes = G; in.n_samples = S;
+    in.exprs.resize(static_cast<std::size_t>(G * S));
+    in.labels = {0,0,0,0,0,0, 1,1,1,1,1,1};
+
+    std::mt19937_64 rng(11);
+    std::normal_distribution<double> n01(0.0, 1.0);
+    for (std::int64_t g = 0; g < G; ++g) {
+        for (std::int64_t s = 0; s < S; ++s) {
+            double v = n01(rng);
+            if (g < 15 && in.labels[static_cast<std::size_t>(s)] == 0) v += 3.0;
+            in.exprs[static_cast<std::size_t>(g * S + s)] = v;
+        }
+    }
+    in.pathway_names = {"top10"};
+    std::vector<std::int32_t> pw;
+    for (std::int32_t g = 0; g < 10; ++g) pw.push_back(g);
+    in.pathway_genes = {pw};
+    in.metric = fsgea::phenotype::Metric::SignalToNoise;
+
+    // nperm should be ignored when exact mode kicks in.
+    in.nperm = 50;
+    in.seed  = 1;
+    auto const r1 = fsgea::phenotype::runPhenotype(in);
+    in.seed  = 9999;
+    auto const r2 = fsgea::phenotype::runPhenotype(in);
+
+    assert(r1.size() == 1 && r2.size() == 1);
+    assert(r1[0].es == r2[0].es);
+    assert(r1[0].pval == r2[0].pval);
+    // p-value should be expressible as an exact fraction with denominator
+    // 924 (= C(12, 6)), so 924 * pval is an integer.
+    double const npval = 924.0 * r1[0].pval;
+    assert(std::abs(npval - std::round(npval)) < 1e-9);
+}
+
+void test_gosper_enumerates_all_subsets() {
+    // Walk every 3-subset of [0, 8) and check we get C(8, 3) = 56 of them.
+    std::uint64_t bits = (1ULL << 3) - 1;
+    std::uint64_t const limit = ((1ULL << 3) - 1) << 5;
+    int count = 0;
+    while (true) {
+        ++count;
+        if (bits == limit) break;
+        bits = fsgea::gosperNext(bits);
+    }
+    assert(count == 56);
+}
+
 void test_fora_matches_hypergeometric() {
     // N=100, m=20, k=14, q=8: matches our R test case
     fsgea::fora::Input in;
@@ -243,6 +299,8 @@ int main() {
     test_edge_empty_pathways();
     test_edge_oversized_pathway_filtered();
     test_phenotype_recovers_obvious_signal();
+    test_phenotype_exact_via_gosper();
+    test_gosper_enumerates_all_subsets();
     test_fora_matches_hypergeometric();
     std::cout << "All C++ core tests passed.\n";
     return 0;

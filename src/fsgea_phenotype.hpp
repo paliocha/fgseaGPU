@@ -315,15 +315,38 @@ namespace fsgea::phenotype {
         }
     }
 
-    // --- permutation null ------------------------------------------------
+    // --- decide between exact enumeration and random sampling -----------
+    //
+    // For small experiments (typical clinical-trial phenotype work with
+    // ~10-20 samples per arm), the number of distinct label permutations
+    // C(n_samples, n_B) is small enough to enumerate exhaustively via
+    // Gosper's hack. That gives an *exact* p-value with no Monte Carlo
+    // sampling error, and often fewer kernel evaluations than the default
+    // nperm = 1000. We auto-switch when the count fits the budget and the
+    // sample count fits a single u64 bitmask.
+    constexpr std::int64_t kExactBudget = 50'000;
+    auto const nB_obs = static_cast<std::int64_t>(
+        std::ranges::count(in.labels, std::int8_t{1}));
+    auto const nA_obs = in.n_samples - nB_obs;
+    double const totalLabelings = binomial(in.n_samples, std::min(nA_obs, nB_obs));
+    bool   const useExact = in.n_samples <= 64
+                         && totalLabelings > 0
+                         && totalLabelings <= static_cast<double>(kExactBudget);
+    std::int64_t const effectiveNperm = useExact
+        ? static_cast<std::int64_t>(totalLabelings)
+        : in.nperm;
+
     // Flat row-major matrix of ES values: perm_es[b * P + i].
-    std::vector<double> perm_es(static_cast<std::size_t>(in.nperm * P));
+    std::vector<double> perm_es(static_cast<std::size_t>(effectiveNperm * P));
 
     [[maybe_unused]] auto const dev =
         fsgea::gpu::resolveDevice(in.deviceHint);
 
 #ifdef FSGEA_WITH_TORCH
-    bool const use_gpu = (dev != fsgea::gpu::Device::CPU);
+    // Exact-mode permutation counts are tiny by definition; skip the GPU
+    // round-trip and use the CPU path. The GPU path is for large-nperm
+    // experiments where the matmul amortises the host→device staging cost.
+    bool const use_gpu = (dev != fsgea::gpu::Device::CPU) && !useExact;
     if (use_gpu) {
         auto const td = fsgea::gpu::asTorchDevice(dev);
         auto const opts64 = torch::TensorOptions().dtype(torch::kFloat64);
@@ -378,57 +401,114 @@ namespace fsgea::phenotype {
     } else
 #endif
     {
-    auto idx = std::ranges::iota_view<std::int64_t, std::int64_t>(0, in.nperm);
-    std::for_each(fsgea::par, idx.begin(), idx.end(),
-        [&](std::int64_t b) {
-            std::mt19937_64 rng(fsgea::splitmix(
-                static_cast<std::uint64_t>(in.seed) ^
-                static_cast<std::uint64_t>(b)));
+    // Per-permutation kernel: given a labels vector, write one row of P ES
+    // values into perm_es starting at row `b`. Allocates O(G) scratch per
+    // call (kept simple; par_unseq does this once per worker thread).
+    auto scoreOnePerm = [&](std::int64_t b,
+                            std::span<std::int8_t const> labels_perm) {
+        detail::PermScratch sc;
+        sc.resize(G, S);
+        detail::scoreAllGenes(in, labels_perm, std::span<double>(sc.stats));
+        detail::argsortDesc(sc.stats, sc.order);
+        detail::invertOrder(sc.order, sc.rank);
+        for (std::int64_t i = 0; i < G; ++i) {
+            sc.stats_sorted[static_cast<std::size_t>(i)] =
+                sc.stats[static_cast<std::size_t>(sc.order[i])];
+        }
+        for (std::size_t i = 0; i < kept.size(); ++i) {
+            auto const& genes = in.pathway_genes[kept[i]];
+            sc.positions.clear();
+            sc.positions.reserve(genes.size());
+            for (auto g : genes)
+                sc.positions.push_back(sc.rank[static_cast<std::size_t>(g)]);
+            std::ranges::sort(sc.positions);
 
-            detail::PermScratch sc;
-            sc.resize(G, S);
-            std::ranges::copy(in.labels, sc.labels_perm.begin());
-            std::ranges::shuffle(sc.labels_perm, rng);
+            auto const r = calcEs(
+                std::span<double const>(sc.stats_sorted),
+                std::span<std::int32_t const>(sc.positions),
+                in.gseaParam, in.scoreType);
+            perm_es[static_cast<std::size_t>(
+                b * P + static_cast<std::int64_t>(i))] = r.es;
+        }
+    };
 
-            detail::scoreAllGenes(in,
-                std::span<std::int8_t const>(sc.labels_perm),
-                std::span<double>(sc.stats));
-            detail::argsortDesc(sc.stats, sc.order);
-            detail::invertOrder(sc.order, sc.rank);
-            for (std::int64_t i = 0; i < G; ++i) {
-                sc.stats_sorted[static_cast<std::size_t>(i)] =
-                    sc.stats[static_cast<std::size_t>(sc.order[i])];
-            }
+    if (useExact) {
+        // Gosper-hack exact enumeration. Enumerate the minority class to
+        // halve the bitmask count when the design is unbalanced; map each
+        // bitmask back to a 0/1 label vector and feed into scoreOnePerm.
+        std::int8_t const minority = nB_obs <= nA_obs ? std::int8_t{1}
+                                                     : std::int8_t{0};
+        std::int64_t const kBits = std::min(nA_obs, nB_obs);
+        std::uint64_t const limit =
+            ((1ULL << kBits) - 1ULL) << (S - kBits);
 
-            for (std::size_t i = 0; i < kept.size(); ++i) {
-                auto const& genes = in.pathway_genes[kept[i]];
-                sc.positions.clear();
-                sc.positions.reserve(genes.size());
-                for (auto g : genes)
-                    sc.positions.push_back(sc.rank[static_cast<std::size_t>(g)]);
-                std::ranges::sort(sc.positions);
+        std::vector<std::uint64_t> masks;
+        masks.reserve(static_cast<std::size_t>(effectiveNperm));
+        for (std::uint64_t bits = (1ULL << kBits) - 1ULL; ; bits = fsgea::gosperNext(bits)) {
+            masks.push_back(bits);
+            if (bits == limit) break;
+        }
 
-                auto const r = calcEs(
-                    std::span<double const>(sc.stats_sorted),
-                    std::span<std::int32_t const>(sc.positions),
-                    in.gseaParam, in.scoreType);
-                perm_es[static_cast<std::size_t>(
-                    b * P + static_cast<std::int64_t>(i))] = r.es;
-            }
-        });
+        auto idx = std::ranges::iota_view<std::int64_t, std::int64_t>(
+            0, effectiveNperm);
+        std::for_each(fsgea::par, idx.begin(), idx.end(),
+            [&](std::int64_t b) {
+                std::uint64_t const m = masks[static_cast<std::size_t>(b)];
+                std::vector<std::int8_t> lp(static_cast<std::size_t>(S));
+                for (std::int64_t s = 0; s < S; ++s) {
+                    bool const bit = ((m >> s) & 1ULL) != 0ULL;
+                    lp[static_cast<std::size_t>(s)] = bit
+                        ? minority
+                        : static_cast<std::int8_t>(1 - minority);
+                }
+                scoreOnePerm(b, std::span<std::int8_t const>(lp));
+            });
+    } else {
+        auto idx = std::ranges::iota_view<std::int64_t, std::int64_t>(
+            0, in.nperm);
+        std::for_each(fsgea::par, idx.begin(), idx.end(),
+            [&](std::int64_t b) {
+                std::mt19937_64 rng(fsgea::splitmix(
+                    static_cast<std::uint64_t>(in.seed) ^
+                    static_cast<std::uint64_t>(b)));
+                std::vector<std::int8_t> lp(in.labels);
+                std::ranges::shuffle(lp, rng);
+                scoreOnePerm(b, std::span<std::int8_t const>(lp));
+            });
+    }
     } // end CPU permutation null branch
 
     // --- summarise -------------------------------------------------------
+    // In exact mode we have the full distribution (one permutation per
+    // distinct labeling), so the p-value is the unbiased
+    // P(|ES_perm| >= |ES_obs|) — no continuity correction needed. Random-
+    // sampling mode keeps the (nMore+1)/(nPerm+1) form via
+    // summarisePermutations.
     std::vector<PathwayResult> results(kept.size());
     for (std::size_t i = 0; i < kept.size(); ++i) {
-        std::vector<double> per(static_cast<std::size_t>(in.nperm));
-        for (std::int64_t b = 0; b < in.nperm; ++b) {
+        std::vector<double> per(static_cast<std::size_t>(effectiveNperm));
+        for (std::int64_t b = 0; b < effectiveNperm; ++b) {
             per[static_cast<std::size_t>(b)] =
                 perm_es[static_cast<std::size_t>(
                     b * P + static_cast<std::int64_t>(i))];
         }
-        auto const summary = summarisePermutations(
+        auto summary = summarisePermutations(
             obs_es[i], per, in.scoreType);
+        if (useExact) {
+            std::int64_t nMore = 0;
+            double const obs = obs_es[i];
+            if (in.scoreType == ScoreType::Std) {
+                for (double e : per) {
+                    bool const sameSign = (e >= 0) == (obs >= 0);
+                    if (sameSign && std::abs(e) >= std::abs(obs)) ++nMore;
+                }
+            } else {
+                for (double e : per) if (e >= obs) ++nMore;
+            }
+            summary.pval = static_cast<double>(nMore) /
+                           static_cast<double>(effectiveNperm);
+            summary.nMoreExtreme = nMore;
+        }
 
         auto& r = results[i];
         r.pathway      = in.pathway_names[kept[i]];

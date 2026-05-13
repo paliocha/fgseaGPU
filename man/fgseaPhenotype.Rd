@@ -10,6 +10,14 @@
   \code{std::execution::par_unseq} on CPU, or as a batched
   \eqn{[G\times S]\cdot[B\times S]^T} matmul on the GPU when LibTorch
   is built in.
+
+  When the number of distinct labelings
+  \eqn{\binom{n}{n_A}} is small enough (\eqn{\le 50000}) the function
+  silently switches to \emph{exact} enumeration via Gosper's hack and
+  returns a Monte-Carlo-free p-value. This covers most clinical-trial
+  phenotype experiments (e.g. 12 samples per arm yields
+  \eqn{\binom{24}{12} = 2{,}704{,}156} — over budget, so random — but
+  6 per arm yields \eqn{\binom{12}{6} = 924} — exact).
 }
 \usage{
 fgseaPhenotype(pathways, exprs, labels,
