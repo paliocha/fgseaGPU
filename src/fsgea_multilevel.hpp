@@ -116,12 +116,14 @@ public:
         std::mt19937_64 rng(static_cast<std::uint64_t>(cfg_.seed));
         auto const N = static_cast<std::size_t>(cfg_.sampleSize);
 
-        // Per-chain membership bitmap, allocated once. The inner MCMC loop
-        // tests "is this gene already in the chain?" billions of times for
-        // large pathways — a bitmap is two orders of magnitude faster than
-        // std::ranges::find on a small sorted vector.
-        std::vector<std::vector<char>> member(N,
-            std::vector<char>(static_cast<std::size_t>(n), 0));
+        // Per-chain membership bitmap, allocated once. 1 bit / gene (packed
+        // into u64 words) instead of 1 byte, so the total memory for N
+        // chains × n genes drops 8× — often the difference between fitting
+        // L2 cache and not, and the inner MCMC loop's hot "is this gene
+        // already in the chain?" check stays O(1) with a single shift+mask.
+        std::vector<BitVector> member;
+        member.reserve(N);
+        for (std::size_t i = 0; i < N; ++i) member.emplace_back(n);
 
         std::vector<std::vector<std::int32_t>> chains(N);
         std::vector<double> es(N);
@@ -129,7 +131,7 @@ public:
             chains[i].resize(static_cast<std::size_t>(k_));
             sampleWithoutReplacement(n, k_,
                 std::span<std::int32_t>(chains[i]), rng);
-            for (auto g : chains[i]) member[i][static_cast<std::size_t>(g)] = 1;
+            for (auto g : chains[i]) member[i].set(g);
             es[i] = calcEs(stats_, std::span<std::int32_t const>(chains[i]),
                            gseaParam_, kInternalScore).es;
         }
@@ -184,9 +186,8 @@ public:
                 std::size_t const dst = order[j];
                 chains[dst] = chains[src];
                 es[dst]     = es[src];
-                std::ranges::fill(member[dst], 0);
-                for (auto g : chains[dst])
-                    member[dst][static_cast<std::size_t>(g)] = 1;
+                member[dst].resetAll();
+                for (auto g : chains[dst]) member[dst].set(g);
             }
 
             for (std::size_t j = 0; j < N; ++j) {
@@ -238,7 +239,7 @@ private:
     // constraint. The membership bitmap collapses the "is this gene already
     // in the chain?" check from O(k) find to O(1) lookup.
     void mcmcMove(std::vector<std::int32_t>& chain,
-                  std::vector<char>&         member,
+                  BitVector&                 member,
                   double&                    chainEs,
                   double                     threshold,
                   std::mt19937_64&           rng) const
@@ -255,7 +256,7 @@ private:
         std::int32_t newGene;
         do {
             newGene = geneDist(rng);
-        } while (member[static_cast<std::size_t>(newGene)]);
+        } while (member.test(newGene));
 
         // After replacing chain[slot] with newGene, only one element is
         // potentially misplaced. Bubble it into its sorted position — O(d)
@@ -281,8 +282,8 @@ private:
             return pos;
         };
 
-        member[static_cast<std::size_t>(oldGene)] = 0;
-        member[static_cast<std::size_t>(newGene)] = 1;
+        member.clear(oldGene);
+        member.set(newGene);
         std::int32_t const newPos = bubbleInsert(slot, newGene);
 
         double const newEs = calcEs(
@@ -294,8 +295,8 @@ private:
             return;
         }
         // Reject: bubble the oldGene back in place of newGene.
-        member[static_cast<std::size_t>(newGene)] = 0;
-        member[static_cast<std::size_t>(oldGene)] = 1;
+        member.clear(newGene);
+        member.set(oldGene);
         (void) bubbleInsert(newPos, oldGene);
     }
 };

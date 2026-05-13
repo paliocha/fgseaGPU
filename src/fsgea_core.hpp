@@ -42,6 +42,60 @@ enum class ScoreType : std::uint8_t { Std, Pos, Neg };
     throw std::invalid_argument("scoreType must be one of \"std\", \"pos\", \"neg\"");
 }
 
+// Dynamic-sized packed bit vector. One bit per element, 64 elements per
+// std::uint64_t word. Membership tests in O(1) with bit-shift + mask;
+// reset-to-zero is one std::fill over the word vector. We use this for the
+// multilevel MCMC chain-membership bitmap (one per chain × n genes); the
+// packed layout drops ~8× memory vs std::vector<char>, often the difference
+// between fitting L2 cache and not for typical n.
+class BitVector {
+public:
+    explicit BitVector(std::int64_t n)
+      : data_(static_cast<std::size_t>((n + 63) / 64), 0ULL), n_(n) {}
+
+    [[nodiscard]] bool test(std::int64_t i) const noexcept {
+        return (data_[static_cast<std::size_t>(i >> 6)] >>
+                (static_cast<std::uint64_t>(i) & 63ULL)) & 1ULL;
+    }
+    void set(std::int64_t i) noexcept {
+        data_[static_cast<std::size_t>(i >> 6)] |=
+            (1ULL << (static_cast<std::uint64_t>(i) & 63ULL));
+    }
+    void clear(std::int64_t i) noexcept {
+        data_[static_cast<std::size_t>(i >> 6)] &=
+            ~(1ULL << (static_cast<std::uint64_t>(i) & 63ULL));
+    }
+    void resetAll() noexcept { std::ranges::fill(data_, 0ULL); }
+    [[nodiscard]] std::int64_t size() const noexcept { return n_; }
+
+private:
+    std::vector<std::uint64_t> data_;
+    std::int64_t               n_;
+};
+
+// Accumulator with optional Neumaier compensation. Plain `+=` by default;
+// when FSGEA_PRECISE_ACCUM is defined, every add tracks a compensation
+// term so the effective precision stays at one machine epsilon regardless
+// of the number of summands. Useful when ES values cluster near zero and
+// pathway sizes are pathologically large (~10⁴ members).
+struct Accumulator {
+    double sum{};
+#ifdef FSGEA_PRECISE_ACCUM
+    double c{};
+    constexpr void add(double delta) noexcept {
+        double const t = sum + delta;
+        c += (std::abs(sum) >= std::abs(delta))
+                 ? (sum - t) + delta
+                 : (delta - t) + sum;
+        sum = t;
+    }
+    [[nodiscard]] constexpr double value() const noexcept { return sum + c; }
+#else
+    constexpr void add(double delta) noexcept { sum += delta; }
+    [[nodiscard]] constexpr double value() const noexcept { return sum; }
+#endif
+};
+
 // Per-pathway result of a single ES evaluation. `leadingEdgeEnd` is the index
 // (into the input `positions` argument) at which the running sum reached its
 // best value, or `std::nullopt` if no non-trivial extremum exists (degenerate
@@ -80,13 +134,15 @@ struct EsResult {
     double const invNR   = 1.0 / nr;
 
     auto walk = [&](auto better) -> EsResult {
-        double cur = 0.0, best = 0.0;
+        Accumulator acc;
+        double best = 0.0;
         std::optional<std::int32_t> bestIdx{};
         std::int64_t prev = -1;
         std::int32_t i    = 0;
         for (auto pos : positions) {
-            cur -= negStep * static_cast<double>(pos - prev - 1);
-            cur += weight(stats[pos]) * invNR;
+            acc.add(-negStep * static_cast<double>(pos - prev - 1));
+            acc.add(weight(stats[pos]) * invNR);
+            double const cur = acc.value();
             if (better(cur, best)) { best = cur; bestIdx = i; }
             prev = pos;
             ++i;
