@@ -99,11 +99,21 @@ foraRes <- fora(examplePathways,
 Routing rule: `fgsea(...)` delegates to `fgseaMultilevel` by default, or to
 `fgseaSimple` if you supply `nperm` — matching the upstream convention.
 
-| Entry point        | Best for                              | Backend           |
-|--------------------|---------------------------------------|-------------------|
-| `fgseaSimple`      | Many permutations, large pathways     | GPU (LibTorch)    |
-| `fgseaMultilevel`  | Accurate small p-values (down to eps) | CPU `par_unseq`   |
-| `fora`             | Set-based over-representation         | CPU `par_unseq`   |
+| Entry point        | Best for                                        | Backend                       |
+|--------------------|-------------------------------------------------|-------------------------------|
+| `fgseaSimple`      | Many permutations, preranked stats              | GPU (LibTorch)                |
+| `fgseaMultilevel`  | Accurate small p-values (down to eps)           | CPU `par_unseq`               |
+| `fgseaPhenotype`   | Classical phenotype-permutation on a matrix     | CPU `par_unseq`, GPU matmul   |
+| `fora`             | Set-based over-representation                   | CPU `par_unseq`               |
+
+`fgseaPhenotype` is the Subramanian-style mode that upstream `fgsea` skips:
+input is an expression matrix plus a two-class label vector. Each
+permutation shuffles the labels, recomputes a per-gene rank metric
+(signal-to-noise, Welch's t, or class-mean variants) via Welford-stable
+accumulation, re-ranks, and walks ES on that fresh ranking. The GPU path
+turns the metric pass into a `[G, S] @ [B, S]ᵀ → [G, B]` matmul and reuses
+the same scatter-cumsum-reduce kernel as `fgseaSimple` with stats varying
+per column.
 
 ## Why no GPU for multilevel?
 

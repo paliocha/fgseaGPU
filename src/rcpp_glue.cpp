@@ -5,6 +5,7 @@
 #include "fsgea_dispatch.hpp"
 #include "fsgea_multilevel.hpp"
 #include "fsgea_fora.hpp"
+#include "fsgea_phenotype.hpp"
 #include "fsgea_qvalue.hpp"
 
 using namespace Rcpp;
@@ -287,6 +288,88 @@ List fsgea_fora_cpp(
         _["size"]           = size,
         _["overlapGenes"]   = overlapGenes,
         _["pi0"]            = pi0Used);
+}
+
+// [[Rcpp::export]]
+List fsgea_phenotype_cpp(
+    NumericVector exprs_row_major,     // length = n_genes * n_samples
+    int n_genes,
+    int n_samples,
+    IntegerVector labels,              // values in {0, 1}, length = n_samples
+    List pathways_zero_based,
+    CharacterVector pathway_names,
+    int nperm,
+    std::string metric,
+    double gsea_param,
+    std::string score_type,
+    int min_size,
+    int max_size,
+    int seed,
+    std::string device)
+{
+    fsgea::phenotype::Input in;
+    in.n_genes   = n_genes;
+    in.n_samples = n_samples;
+    in.exprs.assign(exprs_row_major.begin(), exprs_row_major.end());
+    in.labels.reserve(static_cast<std::size_t>(labels.size()));
+    for (R_xlen_t i = 0; i < labels.size(); ++i)
+        in.labels.push_back(static_cast<std::int8_t>(labels[i]));
+
+    in.pathway_names.reserve(static_cast<std::size_t>(pathway_names.size()));
+    in.pathway_genes.reserve(static_cast<std::size_t>(pathways_zero_based.size()));
+    for (R_xlen_t i = 0; i < pathway_names.size(); ++i) {
+        IntegerVector v = pathways_zero_based[i];
+        in.pathway_genes.emplace_back(v.begin(), v.end());
+        in.pathway_names.emplace_back(Rcpp::as<std::string>(pathway_names[i]));
+    }
+
+    in.nperm      = nperm;
+    in.metric     = fsgea::phenotype::parseMetric(metric);
+    in.gseaParam  = gsea_param;
+    in.scoreType  = fsgea::parseScoreType(score_type);
+    in.minSize    = min_size;
+    in.maxSize    = max_size;
+    in.seed       = seed;
+    in.deviceHint = device;
+
+    std::vector<fsgea::PathwayResult> res;
+    try {
+        res = fsgea::phenotype::runPhenotype(in);
+    } catch (std::exception const& e) {
+        Rcpp::stop(std::string("fsgea phenotype: ") + e.what());
+    }
+
+    auto const P = static_cast<R_xlen_t>(res.size());
+    CharacterVector pathway(P);
+    NumericVector pval(P), padj(P), es(P), nes(P);
+    IntegerVector size(P), nMoreExtreme(P);
+    List leadingEdge(P);
+    double pi0Used = res.empty() ? 1.0 : res.front().pi0Used;
+
+    for (R_xlen_t i = 0; i < P; ++i) {
+        auto const& r = res[static_cast<std::size_t>(i)];
+        pathway[i]      = r.pathway;
+        pval[i]         = r.pval;
+        padj[i]         = r.padj;
+        es[i]           = r.es;
+        nes[i]          = r.nes;
+        size[i]         = static_cast<int>(r.size);
+        nMoreExtreme[i] = static_cast<int>(r.nMoreExtreme);
+        IntegerVector v(r.leadingEdge.size());
+        for (std::size_t j = 0; j < r.leadingEdge.size(); ++j)
+            v[j] = r.leadingEdge[j] + 1;        // back to 1-based
+        leadingEdge[i] = v;
+    }
+    return List::create(
+        _["pathway"]      = pathway,
+        _["pval"]         = pval,
+        _["padj"]         = padj,
+        _["ES"]           = es,
+        _["NES"]          = nes,
+        _["nMoreExtreme"] = nMoreExtreme,
+        _["size"]         = size,
+        _["leadingEdge"]  = leadingEdge,
+        _["pi0"]          = pi0Used);
 }
 
 // [[Rcpp::export]]

@@ -245,6 +245,115 @@ fora <- function(pathways, genes, universe,
     out
 }
 
+#' Phenotype-permutation GSEA
+#'
+#' Classical Subramanian-style GSEA: input is a raw expression matrix plus a
+#' two-class label vector. Each permutation shuffles the labels, recomputes a
+#' per-gene rank metric (signal-to-noise, Welch's t, or class-mean variants),
+#' re-ranks the genes, and walks the enrichment score on that fresh ranking.
+#' This is the mode \pkg{fgsea} does not implement; we add it here for
+#' compatibility with the original Broad GSEA workflow.
+#'
+#' On the GPU backend (\code{device != "cpu"} and the package was built with
+#' LibTorch), the per-gene metric is computed as a batched matrix multiply
+#' across permutations on the device, the ranking via argsort along the gene
+#' dimension, and the ES walk via the same scatter-cumsum-reduce kernel as
+#' \code{\link{fgseaSimple}} but with stats varying per column.
+#'
+#' @param pathways Named list of character vectors.
+#' @param exprs Numeric matrix; rows are genes (with rownames giving gene
+#'   IDs), columns are samples.
+#' @param labels Factor, character, or integer vector of length
+#'   \code{ncol(exprs)}, with exactly two distinct values. The first level
+#'   (as ordered by \code{\link{factor}}) is class A; positive ES means
+#'   enrichment in class A.
+#' @param nperm Number of phenotype permutations.
+#' @param metric Rank metric: \code{"s2n"} (signal-to-noise, default),
+#'   \code{"ttest"} (Welch's), \code{"diff"}, \code{"ratio"},
+#'   \code{"log2_ratio"}.
+#' @param minSize,maxSize,gseaParam,scoreType,seed,device See
+#'   \code{\link{fgseaSimple}}.
+#' @return A \code{data.table} mirroring \code{\link{fgseaSimple}}'s columns.
+#' @export
+fgseaPhenotype <- function(pathways,
+                           exprs,
+                           labels,
+                           nperm     = 1000L,
+                           metric    = c("s2n", "ttest", "diff",
+                                         "ratio", "log2_ratio"),
+                           minSize   = 1L,
+                           maxSize   = nrow(exprs) - 1L,
+                           gseaParam = 1,
+                           scoreType = c("std", "pos", "neg"),
+                           seed      = 42L,
+                           device    = c("auto", "cpu", "cuda", "mps", "rocm")) {
+    metric    <- match.arg(metric)
+    scoreType <- match.arg(scoreType)
+    device    <- match.arg(device)
+
+    stopifnot(
+        is.list(pathways),
+        is.matrix(exprs), is.numeric(exprs), !is.null(rownames(exprs)),
+        length(labels) == ncol(exprs),
+        nperm >= 1L, gseaParam >= 0
+    )
+
+    # Two-class encoding: first level → 0 (class A), second → 1 (class B).
+    lab_fac <- if (is.factor(labels)) labels else factor(labels)
+    if (nlevels(lab_fac) != 2L) {
+        stop("`labels` must contain exactly two distinct values; got ",
+             nlevels(lab_fac))
+    }
+    labels_i <- as.integer(lab_fac) - 1L          # 0/1
+
+    gene_ids <- rownames(exprs)
+    positions_z <- lapply(pathways, function(genes) {
+        idx <- fastmatch::fmatch(genes, gene_ids)
+        idx <- idx[!is.na(idx)]
+        sort.int(as.integer(idx - 1L))
+    })
+
+    # Row-major flattening: t(exprs) is [samples, genes] column-major, which
+    # is exactly the byte order we want for exprs[g, s] = flat[g * S + s].
+    exprs_rm <- as.numeric(t(exprs))
+
+    res <- .Call("_fsgeaGPU_fsgea_phenotype_cpp",
+                 exprs_rm,
+                 as.integer(nrow(exprs)),
+                 as.integer(ncol(exprs)),
+                 labels_i,
+                 positions_z,
+                 as.character(names(pathways)),
+                 as.integer(nperm),
+                 metric,
+                 as.numeric(gseaParam),
+                 scoreType,
+                 as.integer(minSize),
+                 as.integer(maxSize),
+                 as.integer(seed),
+                 device,
+                 PACKAGE = "fsgeaGPU")
+
+    # Leading-edge indices are gene row positions (1-based); map back to IDs.
+    le_names <- lapply(res$leadingEdge, function(idx) gene_ids[idx])
+    out <- data.table::data.table(
+        pathway      = res$pathway,
+        pval         = res$pval,
+        padj         = res$padj,
+        ES           = res$ES,
+        NES          = res$NES,
+        nMoreExtreme = res$nMoreExtreme,
+        size         = res$size,
+        leadingEdge  = le_names
+    )
+    data.table::setattr(out, "pi0", res$pi0)
+    data.table::setattr(out, "padj.method", "storey-tibshirani")
+    data.table::setattr(out, "metric", metric)
+    data.table::setattr(out, "class_levels", levels(lab_fac))
+    data.table::setorder(out, pval, -ES)
+    out
+}
+
 #' Calculate the enrichment score for a single gene set
 #'
 #' @param stats Numeric vector of gene-level statistics, sorted decreasing.

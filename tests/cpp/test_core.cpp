@@ -3,6 +3,7 @@
 #include "../../src/fsgea_dispatch.hpp"
 #include "../../src/fsgea_multilevel.hpp"
 #include "../../src/fsgea_fora.hpp"
+#include "../../src/fsgea_phenotype.hpp"
 #include "../../src/fsgea_qvalue.hpp"
 
 #include <cassert>
@@ -178,6 +179,37 @@ void test_edge_oversized_pathway_filtered() {
     assert(out[0].pathway == "ok");
 }
 
+void test_phenotype_recovers_obvious_signal() {
+    // 100 genes × 10 samples (5 in each class). Top 20 genes are upregulated
+    // in class A. The "top15" pathway should be strongly positive.
+    constexpr std::int64_t G = 100, S = 10;
+    fsgea::phenotype::Input in;
+    in.n_genes = G; in.n_samples = S;
+    in.exprs.resize(static_cast<std::size_t>(G * S));
+    in.labels = {0,0,0,0,0, 1,1,1,1,1};
+
+    std::mt19937_64 rng(7);
+    std::normal_distribution<double> n01(0.0, 1.0);
+    for (std::int64_t g = 0; g < G; ++g) {
+        for (std::int64_t s = 0; s < S; ++s) {
+            double v = n01(rng);
+            if (g < 20 && in.labels[static_cast<std::size_t>(s)] == 0) v += 3.0;
+            in.exprs[static_cast<std::size_t>(g * S + s)] = v;
+        }
+    }
+    in.pathway_names = {"top15"};
+    std::vector<std::int32_t> pw;
+    for (std::int32_t g = 0; g < 15; ++g) pw.push_back(g);
+    in.pathway_genes = {pw};
+    in.nperm  = 200;
+    in.metric = fsgea::phenotype::Metric::SignalToNoise;
+
+    auto res = fsgea::phenotype::runPhenotype(in);
+    assert(res.size() == 1);
+    assert(res[0].es > 0);
+    assert(res[0].pval > 0 && res[0].pval <= 1);
+}
+
 void test_fora_matches_hypergeometric() {
     // N=100, m=20, k=14, q=8: matches our R test case
     fsgea::fora::Input in;
@@ -210,6 +242,7 @@ int main() {
     test_edge_nperm_zero_throws();
     test_edge_empty_pathways();
     test_edge_oversized_pathway_filtered();
+    test_phenotype_recovers_obvious_signal();
     test_fora_matches_hypergeometric();
     std::cout << "All C++ core tests passed.\n";
     return 0;

@@ -114,12 +114,45 @@ RcppExport SEXP _fsgeaGPU_fsgea_fora_cpp(
     END_RCPP
 }
 
+// fsgea_phenotype_cpp
+List fsgea_phenotype_cpp(NumericVector, int, int, IntegerVector,
+                         List, CharacterVector, int, std::string,
+                         double, std::string, int, int, int, std::string);
+RcppExport SEXP _fsgeaGPU_fsgea_phenotype_cpp(
+    SEXP exprsSEXP, SEXP nGenesSEXP, SEXP nSamplesSEXP, SEXP labelsSEXP,
+    SEXP pathwaysSEXP, SEXP namesSEXP, SEXP npermSEXP, SEXP metricSEXP,
+    SEXP gseaParamSEXP, SEXP scoreTypeSEXP, SEXP minSizeSEXP,
+    SEXP maxSizeSEXP, SEXP seedSEXP, SEXP deviceSEXP)
+{
+    BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(fsgea_phenotype_cpp(
+        as<NumericVector>(exprsSEXP),
+        as<int>(nGenesSEXP),
+        as<int>(nSamplesSEXP),
+        as<IntegerVector>(labelsSEXP),
+        as<List>(pathwaysSEXP),
+        as<CharacterVector>(namesSEXP),
+        as<int>(npermSEXP),
+        as<std::string>(metricSEXP),
+        as<double>(gseaParamSEXP),
+        as<std::string>(scoreTypeSEXP),
+        as<int>(minSizeSEXP),
+        as<int>(maxSizeSEXP),
+        as<int>(seedSEXP),
+        as<std::string>(deviceSEXP)));
+    return rcpp_result_gen;
+    END_RCPP
+}
+
 static const R_CallMethodDef CallEntries[] = {
     {"_fsgeaGPU_fsgea_run_cpp",            (DL_FUNC) &_fsgeaGPU_fsgea_run_cpp,            11},
     {"_fsgeaGPU_fsgea_calc_gsea_stat_cpp", (DL_FUNC) &_fsgeaGPU_fsgea_calc_gsea_stat_cpp,  4},
     {"_fsgeaGPU_fsgea_backend_info_cpp",   (DL_FUNC) &_fsgeaGPU_fsgea_backend_info_cpp,    0},
     {"_fsgeaGPU_fsgea_multilevel_cpp",     (DL_FUNC) &_fsgeaGPU_fsgea_multilevel_cpp,     11},
     {"_fsgeaGPU_fsgea_fora_cpp",           (DL_FUNC) &_fsgeaGPU_fsgea_fora_cpp,            7},
+    {"_fsgeaGPU_fsgea_phenotype_cpp",      (DL_FUNC) &_fsgeaGPU_fsgea_phenotype_cpp,      14},
     {nullptr, nullptr, 0}
 };
 
