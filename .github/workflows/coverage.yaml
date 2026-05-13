@@ -1,0 +1,68 @@
+name: Coverage
+
+# Computes line coverage via `covr::package_coverage()` and uploads to
+# Codecov. The CODECOV_TOKEN secret is optional for public repos but
+# recommended to avoid rate limiting on report uploads.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-coverage:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libtbb-dev
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::covr, any::xml2
+          needs: coverage
+
+      - name: Compute coverage
+        run: |
+          cov <- covr::package_coverage(
+            quiet         = FALSE,
+            clean         = FALSE,
+            install_path  = file.path(Sys.getenv("RUNNER_TEMP"), "package")
+          )
+          covr::to_cobertura(cov)
+          print(cov)
+        shell: Rscript {0}
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          fail_ci_if_error: false
+          files: ./cobertura.xml
+          plugins: noop
+          disable_search: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            cobertura.xml
+            ${{ runner.temp }}/package
+          if-no-files-found: ignore

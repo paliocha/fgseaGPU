@@ -1,0 +1,85 @@
+name: Torch nightly
+
+# Builds the package against LibTorch (CPU build) and runs the testthat
+# suite. GitHub Actions runners don't have GPUs, so the resolved device is
+# always "cpu" — the value of this job is verifying that the FSGEA_WITH_TORCH
+# code path *compiles* and *links* against current LibTorch releases, that
+# the runtime device-detection logic gracefully falls back to CPU, and that
+# CPU results remain consistent with the Torch-disabled build.
+#
+# Runs on a weekly schedule and on demand. Skip nightlies on forks to avoid
+# burning their Actions minutes.
+
+on:
+  schedule:
+    - cron: '0 4 * * 0'    # Sundays at 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  torch:
+    if: github.repository_owner == 'paliocha'
+    runs-on: ubuntu-latest
+    name: LibTorch ${{ matrix.torch }} · CPU
+
+    strategy:
+      fail-fast: false
+      matrix:
+        torch: ['2.4.1', '2.5.1']
+
+    env:
+      LIBTORCH_HOME: ${{ github.workspace }}/libtorch
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libtbb-dev unzip
+
+      - name: Cache LibTorch ${{ matrix.torch }}
+        id: cache-torch
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.LIBTORCH_HOME }}
+          key: libtorch-${{ matrix.torch }}-cpu-cxx11-${{ runner.os }}
+
+      - name: Download LibTorch ${{ matrix.torch }}
+        if: steps.cache-torch.outputs.cache-hit != 'true'
+        run: |
+          url="https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-${{ matrix.torch }}%2Bcpu.zip"
+          curl -fSL -o libtorch.zip "$url"
+          unzip -q libtorch.zip -d "$(dirname "$LIBTORCH_HOME")"
+          rm libtorch.zip
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck, any::testthat
+          needs: check
+
+      - name: Install package with Torch backend
+        env:
+          FSGEA_TORCH: '1'
+          FSGEA_TORCH_HOME: ${{ env.LIBTORCH_HOME }}
+        run: R CMD INSTALL --no-multiarch --with-keep.source .
+
+      - name: Verify backend info reports torch_built = TRUE
+        run: |
+          info <- fsgeaGPU::fsgeaBackendInfo()
+          cat("backend info:\n"); str(info)
+          stopifnot(isTRUE(info$torch_built))
+          stopifnot(info$device == "cpu")   # no GPU on CI runners
+        shell: Rscript {0}
+
+      - name: Run testthat
+        env:
+          FSGEA_TORCH_HOME: ${{ env.LIBTORCH_HOME }}
+          LD_LIBRARY_PATH: ${{ env.LIBTORCH_HOME }}/lib
+        run: Rscript -e 'testthat::test_local()'

@@ -1,0 +1,12 @@
+linters: linters_with_defaults(
+    line_length_linter            = line_length_linter(100),
+    object_name_linter            = NULL,   # camelCase mirrors upstream fgsea
+    cyclocomp_linter              = NULL,   # noisy on Rcpp glue
+    commented_code_linter         = NULL,   # we explain algorithm choices
+    indentation_linter            = indentation_linter(indent = 4),
+    object_usage_linter           = NULL    # false positives with .Call symbols
+)
+exclusions: list(
+    "src/RcppExports.cpp",
+    "R/RcppExports.R"
+)

@@ -2,6 +2,9 @@
 
 [![R-CMD-check](https://github.com/paliocha/fsgea-gpu/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/paliocha/fsgea-gpu/actions/workflows/R-CMD-check.yaml)
 [![C++ tests](https://github.com/paliocha/fsgea-gpu/actions/workflows/cpp.yaml/badge.svg)](https://github.com/paliocha/fsgea-gpu/actions/workflows/cpp.yaml)
+[![Lint](https://github.com/paliocha/fsgea-gpu/actions/workflows/lint.yaml/badge.svg)](https://github.com/paliocha/fsgea-gpu/actions/workflows/lint.yaml)
+[![Coverage](https://github.com/paliocha/fsgea-gpu/actions/workflows/coverage.yaml/badge.svg)](https://github.com/paliocha/fsgea-gpu/actions/workflows/coverage.yaml)
+[![Torch nightly](https://github.com/paliocha/fsgea-gpu/actions/workflows/torch-nightly.yaml/badge.svg)](https://github.com/paliocha/fsgea-gpu/actions/workflows/torch-nightly.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 GPU-accelerated **F**ast pre-ranked **G**ene **S**et **E**nrichment **A**nalysis.
