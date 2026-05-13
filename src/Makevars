@@ -1,11 +1,17 @@
 # Makevars — POSIX build (Linux, macOS).
 #
-# Parallel std::execution requires Intel TBB at link time on libstdc++,
-# and is unreliable on Apple libc++. We detect TBB via pkg-config first
-# (works on most Linux distros), then fall back to Homebrew on macOS, then
-# accept that we couldn't find it. `FSGEA_PARALLEL` is only defined when
-# TBB is actually wired in; without it the package compiles cleanly and
-# uses `std::execution::seq` (see src/fsgea_exec.hpp).
+# Parallel std::execution requires Intel TBB at link time on libstdc++.
+# Apple libc++ doesn't ship parallel std::execution at all (par_unseq /
+# seq policy overloads of the algorithms simply aren't there), so even
+# with Homebrew TBB present we must NOT define FSGEA_PARALLEL on macOS
+# — the package would otherwise fail to compile against the system
+# libc++ headers. Linux gcc/clang against libstdc++ does support the
+# parallel policies when libtbb is linked.
+#
+# We detect TBB via pkg-config (works on most Linux distros). If that
+# fails we accept the sequential fallback. `FSGEA_PARALLEL` is only
+# defined when TBB is actually wired in; without it the package
+# compiles cleanly and uses `std::execution::seq` (see fsgea_exec.hpp).
 #
 # The optional LibTorch backend is enabled by setting FSGEA_TORCH=1 and
 # pointing FSGEA_TORCH_HOME at an unpacked LibTorch distribution.
@@ -18,18 +24,15 @@ PKG_CPPFLAGS = -I.
 PKG_LIBS = -lpthread
 
 # --- TBB detection ---------------------------------------------------------
-TBB_VIA_PKG_CONFIG := $(shell pkg-config --exists tbb && echo 1)
-ifeq ($(TBB_VIA_PKG_CONFIG),1)
-  PKG_CPPFLAGS += $(shell pkg-config --cflags tbb) -DFSGEA_PARALLEL
-  PKG_LIBS    += $(shell pkg-config --libs tbb)
-else
-  UNAME_S := $(shell uname -s)
-  ifeq ($(UNAME_S),Darwin)
-    BREW_TBB := $(shell brew --prefix tbb 2>/dev/null)
-    ifneq ($(BREW_TBB),)
-      PKG_CPPFLAGS += -I$(BREW_TBB)/include -DFSGEA_PARALLEL
-      PKG_LIBS    += -L$(BREW_TBB)/lib -ltbb
-    endif
+# Only enable FSGEA_PARALLEL on non-Darwin hosts. Apple libc++ doesn't
+# ship parallel std::execution, so even Homebrew TBB can't unlock par_unseq
+# there — turning it on would just break compilation.
+UNAME_S := $(shell uname -s)
+ifneq ($(UNAME_S),Darwin)
+  TBB_VIA_PKG_CONFIG := $(shell pkg-config --exists tbb && echo 1)
+  ifeq ($(TBB_VIA_PKG_CONFIG),1)
+    PKG_CPPFLAGS += $(shell pkg-config --cflags tbb) -DFSGEA_PARALLEL
+    PKG_LIBS    += $(shell pkg-config --libs tbb)
   endif
 endif
 

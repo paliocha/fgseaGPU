@@ -122,7 +122,7 @@ inline TailAndPmf upperTailAndPmf(std::int64_t q, std::int64_t N,
     std::vector<std::size_t> outIdx(kept.size());
     std::iota(outIdx.begin(), outIdx.end(), 0);
 
-    std::for_each(fsgea::par, outIdx.begin(), outIdx.end(),
+    fsgea::for_each(outIdx.begin(), outIdx.end(),
         [&](std::size_t i) {
             std::size_t const pIdx = kept[i];
             auto const& members = in.pathwayMembers[pIdx]; // already sorted

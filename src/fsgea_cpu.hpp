@@ -33,7 +33,7 @@ inline std::vector<double> permEsBatch(
     std::vector<std::int64_t> perms(static_cast<std::size_t>(B));
     std::iota(perms.begin(), perms.end(), 0);
 
-    std::for_each(fsgea::par, perms.begin(), perms.end(),
+    fsgea::for_each(perms.begin(), perms.end(),
         [&](std::int64_t b) {
             std::mt19937_64 rng(fsgea::splitmix(
                 seed ^ static_cast<std::uint64_t>(b)));

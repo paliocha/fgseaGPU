@@ -326,7 +326,7 @@ struct PathwayMlResult {
         if (scoreType != ScoreType::Std) return scoreType;
         return es >= 0 ? ScoreType::Pos : ScoreType::Neg;
     };
-    std::for_each(fsgea::par, idx.begin(), idx.end(),
+    fsgea::for_each(idx.begin(), idx.end(),
         [&](std::size_t i) {
             auto const& pos = pathwayPositions[i];
             auto const obs = calcEs(stats,

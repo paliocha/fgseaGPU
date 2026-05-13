@@ -13,14 +13,36 @@
 
 #pragma once
 
-#include <execution>
+#include <algorithm>
+#include <utility>
+
+#if __has_include(<execution>)
+#  include <execution>
+#endif
 
 namespace fsgea {
 
-#ifdef FSGEA_PARALLEL
+// On Apple libc++ the <execution> header exists but the policy tags
+// (`std::execution::seq`, `par_unseq`) are not defined. Detect this via
+// the standard feature-test macro and fall through to plain `std::for_each`
+// (no policy argument) when the policies aren't available — every call
+// site then runs sequentially on that host.
+#if defined(__cpp_lib_execution) && __cpp_lib_execution >= 201603L
+#  ifdef FSGEA_PARALLEL
 inline constexpr auto par = std::execution::par_unseq;
-#else
+#  else
 inline constexpr auto par = std::execution::seq;
+#  endif
+
+template <class It, class F>
+inline void for_each(It first, It last, F f) {
+    std::for_each(par, first, last, std::move(f));
+}
+#else
+template <class It, class F>
+inline void for_each(It first, It last, F f) {
+    std::for_each(first, last, std::move(f));
+}
 #endif
 
 } // namespace fsgea

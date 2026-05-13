@@ -182,7 +182,7 @@ inline void scoreAllGenes(
     auto const G = in.n_genes;
     auto const S = in.n_samples;
     auto idx = std::ranges::iota_view<std::int64_t, std::int64_t>(0, G);
-    std::for_each(fsgea::par, idx.begin(), idx.end(),
+    fsgea::for_each(idx.begin(), idx.end(),
         [&](std::int64_t g) {
             Welford a, b;
             auto const row = in.exprs.data() + g * S;
@@ -451,7 +451,7 @@ namespace fsgea::phenotype {
 
         auto idx = std::ranges::iota_view<std::int64_t, std::int64_t>(
             0, effectiveNperm);
-        std::for_each(fsgea::par, idx.begin(), idx.end(),
+        fsgea::for_each(idx.begin(), idx.end(),
             [&](std::int64_t b) {
                 std::uint64_t const m = masks[static_cast<std::size_t>(b)];
                 std::vector<std::int8_t> lp(static_cast<std::size_t>(S));
@@ -466,7 +466,7 @@ namespace fsgea::phenotype {
     } else {
         auto idx = std::ranges::iota_view<std::int64_t, std::int64_t>(
             0, in.nperm);
-        std::for_each(fsgea::par, idx.begin(), idx.end(),
+        fsgea::for_each(idx.begin(), idx.end(),
             [&](std::int64_t b) {
                 std::mt19937_64 rng(fsgea::splitmix(
                     static_cast<std::uint64_t>(in.seed) ^

@@ -65,8 +65,8 @@ inline torch::Tensor permuteLabels(
 {
     auto const S = labels.size(0);
     auto gen = at::detail::createCPUGenerator(static_cast<std::uint64_t>(seed));
-    auto noise = torch::rand({B, S},
-        torch::TensorOptions().dtype(torch::kFloat32), gen).to(device);
+    auto noise = torch::rand({B, S}, gen,
+        torch::TensorOptions().dtype(torch::kFloat32)).to(device);
     auto const perm_idx = noise.argsort(/*dim=*/1);   // [B, S], int64
     // labels.unsqueeze(0).expand({B, S}) is shape-compatible; gather picks
     // the permuted labels per row.
