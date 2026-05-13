@@ -117,12 +117,18 @@ inline double pi0Bootstrap(std::vector<double> const& pvals,
     }
     if (opts.lambdaGrid.empty()) opts.lambdaGrid = detail::defaultLambdaGrid();
 
+    // pi_0 estimation strategy depends on m:
+    //   m <  kMinForStorey   → pi0 = 1.0 (classical BH; Storey is meaningless)
+    //   m >= 4 && bootstrap  → Storey 2002 bootstrap λ-selection
+    //   otherwise            → min over λ grid (sorted-bisect)
+    constexpr std::size_t kMinForStorey = 10;
     double pi0;
-    if (opts.pi0Bootstrap && pvals.size() >= 4) {
+    if (pvals.size() < kMinForStorey) {
+        pi0 = 1.0;
+    } else if (opts.pi0Bootstrap) {
         pi0 = detail::pi0Bootstrap(pvals, opts.lambdaGrid,
                                    opts.bootstrap, opts.seed);
     } else {
-        // Robust fallback: minimum over the lambda grid (cheap for tiny m).
         auto sortedP = pvals;
         std::ranges::sort(sortedP);
         double best = 1.0;
@@ -131,7 +137,7 @@ inline double pi0Bootstrap(std::vector<double> const& pvals,
         }
         pi0 = best;
     }
-    pi0 = std::max(pi0, opts.pi0Floor);
+    pi0 = std::clamp(pi0, opts.pi0Floor, 1.0);
 
     // Compute q-values: sort p ascending, then descending running minimum.
     auto const m = pvals.size();
