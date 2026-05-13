@@ -1,4 +1,4 @@
-// fsgea_multilevel.hpp — adaptive multilevel splitting Monte Carlo for very
+// fsgea_multilevel.h — adaptive multilevel splitting Monte Carlo for very
 // small GSEA p-values.
 //
 // The algorithm (Korotkevich, Sukhov, Sergushichev 2021) layers level
@@ -17,8 +17,8 @@
 
 #pragma once
 
-#include "fsgea_core.hpp"
-#include "fsgea_exec.hpp"
+#include "fsgea_core.h"
+#include "fsgea_exec.h"
 
 #include <algorithm>
 #include <cmath>

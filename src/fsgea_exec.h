@@ -1,4 +1,4 @@
-// fsgea_exec.hpp — execution-policy abstraction.
+// fsgea_exec.h — execution-policy abstraction.
 //
 // libstdc++'s parallel std::execution implementation needs Intel TBB at
 // link time; macOS's libc++ either doesn't implement parallel policies

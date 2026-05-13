@@ -1,4 +1,4 @@
-// fsgea_gpu.hpp — batched ES kernel implemented in LibTorch.
+// fsgea_gpu.h — batched ES kernel implemented in LibTorch.
 //
 // Strategy: for a fixed pathway size k and batch size B, draw B random
 // length-k position sets, build a [B, n] dense contribution tensor, do a
@@ -6,13 +6,13 @@
 // the permutation null into three fused tensor ops on the device.
 //
 // Memory bound: a single mini-batch occupies 8 * B * n bytes. The dispatcher
-// (fsgea_dispatch.hpp) splits B into chunks under a configurable budget.
+// (fsgea_dispatch.h) splits B into chunks under a configurable budget.
 //
 // Build flag: define FSGEA_WITH_TORCH and link against LibTorch to enable.
 
 #pragma once
 
-#include "fsgea_core.hpp"
+#include "fsgea_core.h"
 
 #include <optional>
 #include <string>

@@ -1,6 +1,6 @@
-// fsgea_phenotype.hpp — phenotype-permutation GSEA.
+// fsgea_phenotype.h — phenotype-permutation GSEA.
 //
-// Unlike the preranked pipeline (fsgea_dispatch.hpp), here the input is a
+// Unlike the preranked pipeline (fsgea_dispatch.h), here the input is a
 // raw expression matrix plus a two-class label vector. Each permutation
 // shuffles the labels, recomputes a per-gene rank metric (signal-to-noise,
 // Welch's t, or a class-mean variant), re-ranks the genes, and walks the
@@ -19,19 +19,19 @@
 // and an O(G) scratch arena. Reproducible from a single master seed via
 // splitmix-derived per-permutation seeds.
 //
-// GPU engine (fsgea_phenotype_gpu.hpp, gated by FSGEA_WITH_TORCH): the
+// GPU engine (fsgea_phenotype_gpu.h, gated by FSGEA_WITH_TORCH): the
 // metric stage becomes a `[G, S] @ [B, S]ᵀ → [G, B]` matmul (plus the same
 // shape for `exprs²`), the argsort runs along dim 0, and the ES walk reuses
-// the same scatter/cumsum/amax kernel as `fsgea_gpu.hpp::permEsBatchTorch`
+// the same scatter/cumsum/amax kernel as `fsgea_gpu.h::permEsBatchTorch`
 // but with stats varying per column.
 
 #pragma once
 
-#include "fsgea_core.hpp"
-#include "fsgea_cpu.hpp"
-#include "fsgea_exec.hpp"
-#include "fsgea_gpu.hpp"     // for gpu::resolveDevice/torchAvailable
-#include "fsgea_qvalue.hpp"
+#include "fsgea_core.h"
+#include "fsgea_cpu.h"
+#include "fsgea_exec.h"
+#include "fsgea_gpu.h"     // for gpu::resolveDevice/torchAvailable
+#include "fsgea_qvalue.h"
 
 #include <algorithm>
 #include <cmath>
@@ -221,7 +221,7 @@ inline void invertOrder(std::span<std::int32_t const> order,
 // GPU helpers depend on the Input/Metric types defined above, so include
 // here at file scope rather than inside the namespace block.
 #ifdef FSGEA_WITH_TORCH
-#  include "fsgea_phenotype_gpu.hpp"
+#  include "fsgea_phenotype_gpu.h"
 #endif
 
 namespace fsgea::phenotype {

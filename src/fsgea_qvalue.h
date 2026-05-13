@@ -1,4 +1,4 @@
-// fsgea_qvalue.hpp — Storey-Tibshirani q-values plus a discrete-aware
+// fsgea_qvalue.h — Storey-Tibshirani q-values plus a discrete-aware
 // mid-p variant for tests like the hypergeometric.
 //
 // Continuous q-values:

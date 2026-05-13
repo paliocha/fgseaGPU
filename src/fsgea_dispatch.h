@@ -1,4 +1,4 @@
-// fsgea_dispatch.hpp — orchestrates CPU vs GPU execution.
+// fsgea_dispatch.h — orchestrates CPU vs GPU execution.
 //
 // The dispatcher owns the policy decisions: which device to land on, how to
 // split the permutation batch under a memory budget, how to collate per-
@@ -7,10 +7,10 @@
 
 #pragma once
 
-#include "fsgea_core.hpp"
-#include "fsgea_cpu.hpp"
-#include "fsgea_gpu.hpp"
-#include "fsgea_qvalue.hpp"
+#include "fsgea_core.h"
+#include "fsgea_cpu.h"
+#include "fsgea_gpu.h"
+#include "fsgea_qvalue.h"
 
 #include <string>
 #include <string_view>

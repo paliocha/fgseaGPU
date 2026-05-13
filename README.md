@@ -6,6 +6,7 @@
 [![Coverage](https://github.com/paliocha/fsgea-gpu/actions/workflows/coverage.yaml/badge.svg)](https://github.com/paliocha/fsgea-gpu/actions/workflows/coverage.yaml)
 [![Torch nightly](https://github.com/paliocha/fsgea-gpu/actions/workflows/torch-nightly.yaml/badge.svg)](https://github.com/paliocha/fsgea-gpu/actions/workflows/torch-nightly.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![DeepWiki](https://img.shields.io/badge/DeepWiki-paliocha%2Ffsgea--gpu-blue.svg?logo=bookstack)](https://deepwiki.com/paliocha/fsgea-gpu)
 
 GPU-accelerated **F**ast pre-ranked **G**ene **S**et **E**nrichment **A**nalysis.
 A re-implementation of [`alserglab/fgsea`](https://github.com/alserglab/fgsea)

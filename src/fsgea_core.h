@@ -1,4 +1,4 @@
-// fsgea_core.hpp — shared types and the CPU reference implementation.
+// fsgea_core.h — shared types and the CPU reference implementation.
 //
 // The GSEA enrichment score for a pre-ranked statistic vector r of length n
 // and a gene set S of size k at sorted positions p_0 < p_1 < ... < p_{k-1} is

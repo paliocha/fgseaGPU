@@ -1,4 +1,4 @@
-// fsgea_cpu.hpp — C++23 parallel CPU backend.
+// fsgea_cpu.h — C++23 parallel CPU backend.
 //
 // Uses fsgea::par for the outer permutation loop and operates
 // on flat row-major buffers so the same kernel can be JIT'd to vectorised
@@ -6,8 +6,8 @@
 
 #pragma once
 
-#include "fsgea_core.hpp"
-#include "fsgea_exec.hpp"
+#include "fsgea_core.h"
+#include "fsgea_exec.h"
 
 #include <atomic>
 #include <chrono>

@@ -1,4 +1,4 @@
-// fsgea_fora.hpp — over-representation analysis via the hypergeometric tail.
+// fsgea_fora.h — over-representation analysis via the hypergeometric tail.
 //
 // For each pathway we test whether the overlap with a query gene set is
 // larger than expected under uniform sampling from the universe. The test
@@ -14,8 +14,8 @@
 
 #pragma once
 
-#include "fsgea_exec.hpp"
-#include "fsgea_qvalue.hpp"
+#include "fsgea_exec.h"
+#include "fsgea_qvalue.h"
 
 #include <algorithm>
 #include <cmath>
