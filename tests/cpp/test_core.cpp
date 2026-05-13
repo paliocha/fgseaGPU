@@ -3,6 +3,7 @@
 #include "../../src/fsgea_dispatch.hpp"
 #include "../../src/fsgea_multilevel.hpp"
 #include "../../src/fsgea_fora.hpp"
+#include "../../src/fsgea_qvalue.hpp"
 
 #include <cassert>
 #include <cmath>
@@ -79,6 +80,60 @@ void test_multilevel_basic() {
     assert(res[0].log2err >= 0);
 }
 
+void test_qvalue_monotone_and_bounded_by_bh() {
+    // Mixture: 80 nulls (uniform) + 20 strong signals (small p).
+    std::vector<double> ps;
+    ps.reserve(100);
+    std::mt19937_64 rng(42);
+    std::uniform_real_distribution<double> ud;
+    for (int i = 0; i < 80; ++i) ps.push_back(ud(rng));
+    for (int i = 0; i <  20; ++i) ps.push_back(ud(rng) * 0.005);
+
+    auto r = fsgea::qvalue::storey(ps);
+    assert(r.qvalues.size() == ps.size());
+    // pi_0 in (0, 1]
+    assert(r.pi0 > 0.0 && r.pi0 <= 1.0);
+
+    // Sort by p and verify monotone q.
+    std::vector<std::size_t> order(ps.size());
+    std::iota(order.begin(), order.end(), 0);
+    std::ranges::sort(order, [&](std::size_t a, std::size_t b) {
+        return ps[a] < ps[b];
+    });
+    double prev = 0.0;
+    for (auto idx : order) {
+        assert(r.qvalues[idx] >= prev - 1e-12);
+        assert(r.qvalues[idx] >= 0.0 && r.qvalues[idx] <= 1.0);
+        prev = r.qvalues[idx];
+    }
+
+    // Hand-computed BH bound: q <= BH for any pi_0 <= 1.
+    auto const m = static_cast<double>(ps.size());
+    std::vector<double> bh(ps.size());
+    {
+        double runMin = 1.0;
+        for (std::size_t rank = ps.size(); rank-- > 0; ) {
+            auto idx = order[rank];
+            double raw = ps[idx] * m / static_cast<double>(rank + 1);
+            runMin = std::min(runMin, raw);
+            bh[idx] = std::min(runMin, 1.0);
+        }
+    }
+    for (std::size_t i = 0; i < ps.size(); ++i) {
+        assert(r.qvalues[i] <= bh[i] + 1e-9);
+    }
+}
+
+void test_midp_bounded_by_p() {
+    // For a 1-sided discrete test, midP <= P always.
+    std::vector<double> p = {0.10, 0.05, 0.01, 0.30};
+    std::vector<double> pmf = {0.04, 0.02, 0.005, 0.10};
+    auto mp = fsgea::qvalue::midP(p, pmf);
+    for (std::size_t i = 0; i < p.size(); ++i) {
+        assert(mp[i] >= 0.0 && mp[i] <= p[i] + 1e-12);
+    }
+}
+
 void test_fora_matches_hypergeometric() {
     // N=100, m=20, k=14, q=8: matches our R test case
     fsgea::fora::Input in;
@@ -105,6 +160,8 @@ int main() {
     test_pipeline_smoke();
     test_zero_es_throws();
     test_multilevel_basic();
+    test_qvalue_monotone_and_bounded_by_bh();
+    test_midp_bounded_by_p();
     test_fora_matches_hypergeometric();
     std::cout << "All C++ core tests passed.\n";
     return 0;

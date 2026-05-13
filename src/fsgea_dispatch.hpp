@@ -10,6 +10,7 @@
 #include "fsgea_core.hpp"
 #include "fsgea_cpu.hpp"
 #include "fsgea_gpu.hpp"
+#include "fsgea_qvalue.hpp"
 
 #include <string>
 #include <string_view>
@@ -135,20 +136,15 @@ inline std::uint64_t splitmix(std::uint64_t x) {
         r.leadingEdge  = std::move(obs.leadingEdge);
     }
 
-    // BH adjusted p-values across kept pathways.
+    // Storey-Tibshirani q-values across kept pathways.
     {
-        std::vector<std::pair<double, std::size_t>> pIdx;
-        pIdx.reserve(results.size());
-        for (std::size_t i = 0; i < results.size(); ++i)
-            pIdx.emplace_back(results[i].pval, i);
-        std::ranges::sort(pIdx);
-        auto m = static_cast<double>(pIdx.size());
-        double prev = 1.0;
-        for (auto it = pIdx.rbegin(); it != pIdx.rend(); ++it) {
-            std::size_t rank = static_cast<std::size_t>(std::distance(it, pIdx.rend()));
-            double adj = std::min(prev, it->first * m / static_cast<double>(rank));
-            results[it->second].padj = adj;
-            prev = adj;
+        std::vector<double> pvals;
+        pvals.reserve(results.size());
+        for (auto const& r : results) pvals.push_back(r.pval);
+        auto q = fsgea::qvalue::storey(pvals);
+        for (std::size_t i = 0; i < results.size(); ++i) {
+            results[i].padj    = q.qvalues[i];
+            results[i].pi0Used = q.pi0;
         }
     }
 

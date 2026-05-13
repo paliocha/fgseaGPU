@@ -5,6 +5,7 @@
 #include "fsgea_dispatch.hpp"
 #include "fsgea_multilevel.hpp"
 #include "fsgea_fora.hpp"
+#include "fsgea_qvalue.hpp"
 
 using namespace Rcpp;
 
@@ -66,20 +67,21 @@ List fsgea_run_cpp(
     NumericVector  pval(P), padj(P), es(P), nes(P);
     IntegerVector  size(P), nMoreExtreme(P);
     List leadingEdge(P);
+    double pi0Used = res.empty() ? 1.0 : res.front().pi0Used;
 
     for (R_xlen_t i = 0; i < P; ++i) {
-        pathway[i]      = res[static_cast<std::size_t>(i)].pathway;
-        pval[i]         = res[static_cast<std::size_t>(i)].pval;
-        padj[i]         = res[static_cast<std::size_t>(i)].padj;
-        es[i]           = res[static_cast<std::size_t>(i)].es;
-        nes[i]          = res[static_cast<std::size_t>(i)].nes;
-        size[i]         = static_cast<int>(res[static_cast<std::size_t>(i)].size);
-        nMoreExtreme[i] = static_cast<int>(res[static_cast<std::size_t>(i)].nMoreExtreme);
+        auto const& r = res[static_cast<std::size_t>(i)];
+        pathway[i]      = r.pathway;
+        pval[i]         = r.pval;
+        padj[i]         = r.padj;
+        es[i]           = r.es;
+        nes[i]          = r.nes;
+        size[i]         = static_cast<int>(r.size);
+        nMoreExtreme[i] = static_cast<int>(r.nMoreExtreme);
 
-        auto const& le = res[static_cast<std::size_t>(i)].leadingEdge;
-        IntegerVector v(le.size());
-        // Return 1-based indices for R consumers
-        for (std::size_t j = 0; j < le.size(); ++j) v[j] = le[j] + 1;
+        IntegerVector v(r.leadingEdge.size());
+        for (std::size_t j = 0; j < r.leadingEdge.size(); ++j)
+            v[j] = r.leadingEdge[j] + 1;
         leadingEdge[i]  = v;
     }
 
@@ -91,7 +93,8 @@ List fsgea_run_cpp(
         _["NES"]          = nes,
         _["nMoreExtreme"] = nMoreExtreme,
         _["size"]         = size,
-        _["leadingEdge"]  = leadingEdge);
+        _["leadingEdge"]  = leadingEdge,
+        _["pi0"]          = pi0Used);
 }
 
 // [[Rcpp::export]]
@@ -198,20 +201,16 @@ List fsgea_multilevel_cpp(
         }
     }
 
-    // BH on pval.
+    // Storey q-values on the multilevel p-values.
+    double pi0Used = 1.0;
     {
-        std::vector<std::pair<double, R_xlen_t>> ord;
-        ord.reserve(P);
-        for (R_xlen_t i = 0; i < P; ++i) ord.emplace_back(pval[i], i);
-        std::ranges::sort(ord);
-        double const Md = static_cast<double>(P);
-        double prev = 1.0;
-        for (auto it = ord.rbegin(); it != ord.rend(); ++it) {
-            auto rank = static_cast<double>(std::distance(it, ord.rend()));
-            double adj = std::min(prev, it->first * Md / rank);
-            padj[it->second] = adj;
-            prev = adj;
-        }
+        std::vector<double> ps;
+        ps.reserve(static_cast<std::size_t>(P));
+        for (R_xlen_t i = 0; i < P; ++i) ps.push_back(pval[i]);
+        auto q = fsgea::qvalue::storey(ps);
+        pi0Used = q.pi0;
+        for (R_xlen_t i = 0; i < P; ++i)
+            padj[i] = q.qvalues[static_cast<std::size_t>(i)];
     }
 
     return List::create(
@@ -223,7 +222,8 @@ List fsgea_multilevel_cpp(
         _["NES"]         = nes,
         _["size"]        = size,
         _["leadingEdge"] = leadingEdge,
-        _["floored"]     = floored);
+        _["floored"]     = floored,
+        _["pi0"]         = pi0Used);
 }
 
 // [[Rcpp::export]]
@@ -259,15 +259,17 @@ List fsgea_fora_cpp(
 
     auto const P = static_cast<R_xlen_t>(res.size());
     CharacterVector pathway(P);
-    NumericVector pval(P), padj(P), fold(P);
+    NumericVector pval(P), midp(P), padj(P), fold(P);
     IntegerVector overlap(P), size(P);
     List overlapGenes(P);
+    double pi0Used = res.empty() ? 1.0 : res.front().pi0Used;
 
     for (R_xlen_t i = 0; i < P; ++i) {
         auto const& r = res[static_cast<std::size_t>(i)];
         pathway[i]        = r.pathway;
         pval[i]           = r.pval;
-        padj[i]           = r.padj;
+        midp[i]           = r.midP;
+        padj[i]           = r.qvalue;
         fold[i]           = r.foldEnrichment;
         overlap[i]        = static_cast<int>(r.overlap);
         size[i]           = static_cast<int>(r.size);
@@ -279,11 +281,13 @@ List fsgea_fora_cpp(
     return List::create(
         _["pathway"]        = pathway,
         _["pval"]           = pval,
+        _["midP"]           = midp,
         _["padj"]           = padj,
         _["foldEnrichment"] = fold,
         _["overlap"]        = overlap,
         _["size"]           = size,
-        _["overlapGenes"]   = overlapGenes);
+        _["overlapGenes"]   = overlapGenes,
+        _["pi0"]            = pi0Used);
 }
 
 // [[Rcpp::export]]

@@ -120,11 +120,49 @@ cores for typical pathway counts (5k–25k).
 - Multiple-testing correction is Benjamini–Hochberg over all kept
   pathways, matching upstream.
 
+## Multiple-testing correction: Storey q-values
+
+The `padj` column in every output now holds a Storey-Tibshirani q-value
+rather than a Benjamini–Hochberg adjusted p-value. The q-value is the
+FDR analogue but with the proportion of true nulls π₀ estimated from
+the high-p tail of the empirical distribution rather than assumed
+to be 1. This gives strictly more power than BH whenever π₀ < 1
+(typical in pathway analysis with a moderate-to-strong signal), and
+reduces to BH in the worst case.
+
+For the continuous pipelines (`fgseaSimple`, `fgseaMultilevel`) we use
+the bootstrap λ-selection rule of Storey (2002): for a grid of λ in
+{0.05, 0.10, …, 0.95} we estimate π₀(λ) and pick the λ minimising the
+bootstrap MSE against the empirical minimum.
+
+For `fora`, the hypergeometric tail is discrete, so naive q-values
+inherit the well-known conservatism of one-sided discrete tests. We
+apply the Lancaster / Heyse (2011) mid-p adjustment
+
+    midP = P(X ≥ q) − ½ · P(X = q)
+
+before feeding the sequence into the Storey machinery. The output
+exposes both `pval` (the strict upper-tail probability) and `midP`
+columns, with `padj` derived from the latter.
+
+The estimated π₀ is attached to each output as an attribute:
+
+```r
+res <- fgsea(pathways, stats)
+attr(res, "pi0")         # numeric, in (0, 1]
+attr(res, "padj.method") # "storey-tibshirani"
+```
+
+If you need vanilla BH for compatibility, run
+`stats::p.adjust(res$pval, "BH")` on the `pval` column.
+
 ## Differences vs upstream `fgsea`
 
 - A zero observed ES (degenerate gene set, all-zero member statistics)
   raises a `domain_error` rather than silently returning an empty leading
   edge — fail loud is friendlier than fail quiet here.
+- `padj` is a Storey q-value, not BH (see section above).
+- `fora` returns an additional `midP` column.
 - `fgseaMultilevel` exposes a `floored` flag indicating whether the
   reported p-value hit the `eps` floor before the level threshold
   bracketed the observed ES.

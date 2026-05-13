@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include "fsgea_qvalue.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -37,8 +39,10 @@ struct Input {
 
 struct Result {
     std::string pathway;
-    double      pval{1.0};
-    double      padj{1.0};
+    double      pval{1.0};       // upper-tail hypergeometric P(X >= q)
+    double      midP{1.0};       // P(X >= q) - 0.5 * P(X = q)
+    double      qvalue{1.0};     // Storey q-value over mid-p (discrete adj.)
+    double      pi0Used{1.0};    // pi_0 estimate used for q-values
     double      foldEnrichment{};
     std::int64_t overlap{};
     std::int64_t size{};
@@ -128,7 +132,11 @@ inline std::vector<Result> run(Input const& in) {
             std::int64_t const N = in.universeSize;
             std::int64_t const k = in.querySize;
 
-            double const pval = detail::upperTail(q, N, m, k);
+            double const pval    = detail::upperTail(q, N, m, k);
+            double const pmfAtQ  = std::isfinite(detail::logHyperPmf(q, N, m, k))
+                ? std::exp(detail::logHyperPmf(q, N, m, k)) : 0.0;
+            double const midP    = std::clamp(pval - 0.5 * pmfAtQ, 0.0, 1.0);
+
             double const expected =
                 static_cast<double>(k) * static_cast<double>(m)
                 / static_cast<double>(N);
@@ -139,26 +147,23 @@ inline std::vector<Result> run(Input const& in) {
             Result& r = out[i];
             r.pathway        = in.pathwayNames[pIdx];
             r.pval           = pval;
+            r.midP           = midP;
             r.foldEnrichment = fold;
             r.overlap        = q;
             r.size           = m;
             r.overlapGenes   = std::move(overlap);
         });
 
-    // BH adjustment.
-    std::vector<std::pair<double, std::size_t>> pIdx;
-    pIdx.reserve(out.size());
-    for (std::size_t i = 0; i < out.size(); ++i)
-        pIdx.emplace_back(out[i].pval, i);
-    std::ranges::sort(pIdx);
-    auto M = static_cast<double>(pIdx.size());
-    double prev = 1.0;
-    for (auto it = pIdx.rbegin(); it != pIdx.rend(); ++it) {
-        std::size_t const rank = static_cast<std::size_t>(
-            std::distance(it, pIdx.rend()));
-        double adj = std::min(prev, it->first * M / static_cast<double>(rank));
-        out[it->second].padj = adj;
-        prev = adj;
+    // Discrete-aware q-values: Storey-Tibshirani on the mid-p sequence
+    // (Heyse 2011 / Lancaster mid-p correction). Falls back gracefully for
+    // small m: storey() switches to min-over-lambda below 4 tests.
+    std::vector<double> midPs;
+    midPs.reserve(out.size());
+    for (auto const& r : out) midPs.push_back(r.midP);
+    auto qres = fsgea::qvalue::storey(midPs);
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        out[i].qvalue  = qres.qvalues[i];
+        out[i].pi0Used = qres.pi0;
     }
     return out;
 }

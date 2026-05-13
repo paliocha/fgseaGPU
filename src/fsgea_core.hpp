@@ -105,7 +105,8 @@ template <std::ranges::random_access_range Stats,
 struct PathwayResult {
     std::string pathway;
     double pval{1.0};
-    double padj{1.0};
+    double padj{1.0};      // Storey q-value (FDR analogue with pi_0 estimation)
+    double pi0Used{1.0};   // pi_0 estimate used to derive padj
     double es{};
     double nes{};
     std::int64_t size{};

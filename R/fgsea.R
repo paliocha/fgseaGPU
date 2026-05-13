@@ -113,6 +113,8 @@ fgseaSimple <- function(pathways,
         size         = res$size,
         leadingEdge  = le_names
     )
+    data.table::setattr(out, "pi0", res$pi0)
+    data.table::setattr(out, "padj.method", "storey-tibshirani")
     data.table::setorder(out, pval, -ES)
     out
 }
@@ -178,6 +180,8 @@ fgseaMultilevel <- function(pathways,
         leadingEdge = le_names,
         floored     = res$floored
     )
+    data.table::setattr(out, "pi0", res$pi0)
+    data.table::setattr(out, "padj.method", "storey-tibshirani")
     data.table::setorder(out, pval, -ES)
     out
 }
@@ -227,12 +231,15 @@ fora <- function(pathways, genes, universe,
     out <- data.table::data.table(
         pathway        = res$pathway,
         pval           = res$pval,
+        midP           = res$midP,
         padj           = res$padj,
         foldEnrichment = res$foldEnrichment,
         overlap        = res$overlap,
         size           = res$size,
         overlapGenes   = overlapGeneNames
     )
+    data.table::setattr(out, "pi0", res$pi0)
+    data.table::setattr(out, "padj.method", "storey-tibshirani-on-midp")
     data.table::setorder(out, pval)
     out
 }
