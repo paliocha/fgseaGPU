@@ -2,7 +2,7 @@
 # the user's responsibility — point FSGEA_TORCH_HOME at the unpacked
 # release and ensure libtorch's bin/ is on PATH at load time.
 
-CXX_STD = CXX23
+CXX_STD = CXX20
 
 PKG_CPPFLAGS = -I.
 PKG_CXXFLAGS = -O3 -Wall -Wextra -Wpedantic

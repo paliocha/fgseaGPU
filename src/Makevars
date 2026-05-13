@@ -2,7 +2,7 @@
 # FSGEA_TORCH=1 and FSGEA_TORCH_HOME pointing at an unpacked LibTorch
 # distribution. Without those, the package still builds CPU-only.
 
-CXX_STD = CXX23
+CXX_STD = CXX20
 
 PKG_CPPFLAGS = -I.
 PKG_CXXFLAGS = -O3 -Wall -Wextra -Wpedantic -fvisibility=hidden

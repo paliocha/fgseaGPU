@@ -32,7 +32,7 @@ Suggests:
     rmarkdown,
     torch
 LinkingTo: Rcpp
-SystemRequirements: C++23, LibTorch (>= 2.2) for GPU support, CMake (>= 3.24)
+SystemRequirements: C++20, Intel TBB (libtbb-dev) for parallel std::execution, LibTorch (>= 2.2) for GPU support, CMake (>= 3.20) for standalone builds
 License: MIT + file LICENSE
 URL: https://github.com/paliocha/fsgea-gpu
 BugReports: https://github.com/paliocha/fsgea-gpu/issues

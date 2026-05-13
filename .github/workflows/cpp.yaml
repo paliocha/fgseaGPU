@@ -1,0 +1,55 @@
+name: C++ tests
+
+# Fast-feedback job: builds the standalone CMake target and runs ctest under
+# both GCC and Clang. The R-CMD-check workflow already covers an end-to-end
+# build, but this job catches C++-only regressions in seconds rather than
+# minutes and tests both major compilers without needing R installed.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cmake-ctest:
+    runs-on: ubuntu-latest
+    name: ${{ matrix.compiler.cc }} (Release)
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - { cc: g++,     pkg: g++ }
+          - { cc: clang++, pkg: clang }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ${{ matrix.compiler.pkg }} cmake ninja-build libtbb-dev
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_CXX_COMPILER=${{ matrix.compiler.cc }} \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DFSGEA_WITH_TORCH=OFF \
+            -DFSGEA_BUILD_BENCH=ON  \
+            -DFSGEA_BUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --parallel
+
+      - name: Smoke-run the bench
+        run: ./build/fsgea_bench 5000 100 50 200 cpu

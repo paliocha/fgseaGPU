@@ -1,0 +1,70 @@
+name: R-CMD-check
+
+# Runs `R CMD check --as-cran` across the three major platforms with the
+# release and devel R toolchains. CPU-only — the optional LibTorch backend
+# is not exercised here because it would balloon the runner image and CI
+# cannot reach a GPU anyway. The Torch path is covered by local builds.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  R-CMD-check:
+    runs-on: ${{ matrix.config.os }}
+    name: ${{ matrix.config.os }} · R-${{ matrix.config.r }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - { os: ubuntu-latest,  r: release }
+          - { os: ubuntu-latest,  r: devel   }
+          - { os: macos-latest,   r: release }
+          - { os: windows-latest, r: release }
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      _R_CHECK_FORCE_SUGGESTS_: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.config.r }}
+          http-user-agent: ${{ matrix.config.r == 'devel' && 'release' || 'default' }}
+          use-public-rspm: true
+
+      - name: Install Intel TBB (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libtbb-dev
+
+      - name: Install Intel TBB (macOS)
+        if: runner.os == 'macOS'
+        run: brew install tbb
+
+      # Windows uses Rtools' bundled toolchain. Makevars.win does not link TBB;
+      # std::execution::par_unseq degrades to sequential there. The tests still
+      # exercise the algorithm — just on one core.
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck
+          needs: check
+
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          upload-snapshots: true
+          args: 'c("--no-manual", "--as-cran")'

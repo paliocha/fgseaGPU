@@ -7,7 +7,7 @@ project(fsgea_gpu
     VERSION 0.1.0
     LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -22,7 +22,7 @@ option(FSGEA_BUILD_TESTS "Build the C++ unit tests"      ON)
 add_library(fsgea_gpu INTERFACE)
 target_include_directories(fsgea_gpu INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>)
-target_compile_features(fsgea_gpu INTERFACE cxx_std_23)
+target_compile_features(fsgea_gpu INTERFACE cxx_std_20)
 target_compile_options(fsgea_gpu INTERFACE
     -Wall -Wextra -Wpedantic -O3)
 

@@ -1,5 +1,9 @@
 # fsgea-gpu
 
+[![R-CMD-check](https://github.com/paliocha/fsgea-gpu/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/paliocha/fsgea-gpu/actions/workflows/R-CMD-check.yaml)
+[![C++ tests](https://github.com/paliocha/fsgea-gpu/actions/workflows/cpp.yaml/badge.svg)](https://github.com/paliocha/fsgea-gpu/actions/workflows/cpp.yaml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 GPU-accelerated **F**ast pre-ranked **G**ene **S**et **E**nrichment **A**nalysis.
 A re-implementation of [`alserglab/fgsea`](https://github.com/alserglab/fgsea)
 with the permutation null and per-pathway enrichment score computed in
