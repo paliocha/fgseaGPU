@@ -15,6 +15,9 @@ permissions:
   contents: read
   pull-requests: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   r-lint:
     runs-on: ubuntu-latest
@@ -36,14 +39,34 @@ jobs:
           needs: lint
 
       - name: Run lintr (advisory)
+        # NB: we deliberately format lints by hand. Calling `print()` on a
+        # lints object invokes lintr's GitHub-Actions reporter, which calls
+        # `quit(status = 1)` whenever it prints anything — regardless of
+        # the LINTR_ERROR_ON_LINT env var. Iterating with `message()`
+        # bypasses that path and keeps the job advisory.
+        env:
+          LINTR_ERROR_ON_LINT: "false"
         run: |
-          lints <- lintr::lint_package()
-          if (length(lints) > 0) {
-              print(lints)
-              cat("\nFound", length(lints), "lint(s). Advisory — not failing the build.\n")
+          lints <- tryCatch(
+              lintr::lint_package(),
+              error = function(e) {
+                  message("lintr error: ", conditionMessage(e))
+                  list()
+              }
+          )
+          n <- length(lints)
+          if (n > 0) {
+              message(sprintf("Found %d lint(s):", n))
+              for (l in lints) {
+                  message(sprintf("  %s:%d [%s] %s",
+                                  l$filename, l$line_number,
+                                  l$type, l$message))
+              }
+              message("\n(advisory — not failing the build)")
           } else {
-              cat("No lints found.\n")
+              message("No lints found.")
           }
+          quit(save = "no", status = 0)
         shell: Rscript {0}
 
   cpp-tidy:
