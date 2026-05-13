@@ -257,12 +257,33 @@ private:
             newGene = geneDist(rng);
         } while (member[static_cast<std::size_t>(newGene)]);
 
-        // Apply the swap and keep the chain sorted by a single linear-scan
-        // shift (k is typically small enough that this beats sorting).
+        // After replacing chain[slot] with newGene, only one element is
+        // potentially misplaced. Bubble it into its sorted position — O(d)
+        // moves where d is the displacement, typically far below the
+        // O(k log k) cost of a full sort. Returns the final index of the
+        // newly-inserted gene.
+        auto bubbleInsert = [&](std::int32_t pos, std::int32_t value) {
+            chain[static_cast<std::size_t>(pos)] = value;
+            while (pos > 0 &&
+                   chain[static_cast<std::size_t>(pos)] <
+                   chain[static_cast<std::size_t>(pos - 1)]) {
+                std::swap(chain[static_cast<std::size_t>(pos)],
+                          chain[static_cast<std::size_t>(pos - 1)]);
+                --pos;
+            }
+            while (pos + 1 < static_cast<std::int32_t>(k_) &&
+                   chain[static_cast<std::size_t>(pos)] >
+                   chain[static_cast<std::size_t>(pos + 1)]) {
+                std::swap(chain[static_cast<std::size_t>(pos)],
+                          chain[static_cast<std::size_t>(pos + 1)]);
+                ++pos;
+            }
+            return pos;
+        };
+
         member[static_cast<std::size_t>(oldGene)] = 0;
         member[static_cast<std::size_t>(newGene)] = 1;
-        chain[static_cast<std::size_t>(slot)]    = newGene;
-        std::ranges::sort(chain);
+        std::int32_t const newPos = bubbleInsert(slot, newGene);
 
         double const newEs = calcEs(
             stats_, std::span<std::int32_t const>(chain),
@@ -272,11 +293,10 @@ private:
             chainEs = newEs;
             return;
         }
-        // Reject and restore.
+        // Reject: bubble the oldGene back in place of newGene.
         member[static_cast<std::size_t>(newGene)] = 0;
         member[static_cast<std::size_t>(oldGene)] = 1;
-        *std::ranges::find(chain, newGene) = oldGene;
-        std::ranges::sort(chain);
+        (void) bubbleInsert(newPos, oldGene);
     }
 };
 
@@ -305,12 +325,6 @@ struct PathwayMlResult {
         if (scoreType != ScoreType::Std) return scoreType;
         return es >= 0 ? ScoreType::Pos : ScoreType::Neg;
     };
-    auto const splitmix = [](std::uint64_t x) {
-        x += 0x9E3779B97F4A7C15ULL;
-        x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ULL;
-        return x ^ (x >> 27);
-    };
-
     std::for_each(fsgea::par, idx.begin(), idx.end(),
         [&](std::size_t i) {
             auto const& pos = pathwayPositions[i];
@@ -319,9 +333,9 @@ struct PathwayMlResult {
                                     gseaParam, scoreType);
 
             Config local = cfg;
-            local.seed = static_cast<std::int64_t>(
-                splitmix(static_cast<std::uint64_t>(cfg.seed) ^
-                         static_cast<std::uint64_t>(i)));
+            local.seed = static_cast<std::int64_t>(fsgea::splitmix(
+                static_cast<std::uint64_t>(cfg.seed) ^
+                static_cast<std::uint64_t>(i)));
 
             EsRuler ruler(stats,
                           static_cast<std::int64_t>(pos.size()),

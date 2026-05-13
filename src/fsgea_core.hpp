@@ -44,66 +44,64 @@ enum class ScoreType : std::uint8_t { Std, Pos, Neg };
 
 // Per-pathway result of a single ES evaluation. `leadingEdgeEnd` is the index
 // (into the input `positions` argument) at which the running sum reached its
-// best value, or std::nullopt if no non-trivial extremum exists (degenerate
+// best value, or `std::nullopt` if no non-trivial extremum exists (degenerate
 // gene set: k == 0, k >= n, or all member statistics zero).
 struct EsResult {
     double                       es{};
     std::optional<std::int32_t>  leadingEdgeEnd{};
 };
 
-// Compute the (signed) enrichment score for a single gene set against a fixed
-// ranked vector. `positions` must be sorted ascending and zero-based. Runs in
-// O(k) — the cost of one walk over the set members.
-template <std::ranges::random_access_range Stats,
-          std::ranges::random_access_range Positions>
-[[nodiscard]] constexpr EsResult calcEs(
-    Stats const& stats,
-    Positions const& positions,
-    double gseaParam,
-    ScoreType scoreType)
+// Compute the (signed) enrichment score for a single gene set against a
+// fixed ranked vector. `positions` must be sorted ascending and zero-based.
+// Runs in O(k) — one walk over the set members. The score-type branch is
+// hoisted out of the inner loop, and gseaParam == 1 short-circuits the
+// std::pow call (overwhelmingly the most common case in practice).
+[[nodiscard]] inline EsResult calcEs(
+    std::span<double const>        stats,
+    std::span<std::int32_t const>  positions,
+    double                         gseaParam,
+    ScoreType                      scoreType)
 {
-    auto const n = static_cast<std::int64_t>(std::ranges::size(stats));
-    auto const k = static_cast<std::int64_t>(std::ranges::size(positions));
+    auto const n = static_cast<std::int64_t>(stats.size());
+    auto const k = static_cast<std::int64_t>(positions.size());
     if (k == 0 || k >= n) return {};
 
-    // Numerator NR = sum |r|^w over set members.
+    bool const unit_w = (gseaParam == 1.0);
+    auto const weight = [&](double x) -> double {
+        double const a = std::abs(x);
+        return unit_w ? a : std::pow(a, gseaParam);
+    };
+
     double nr = 0.0;
-    for (auto pos : positions) {
-        nr += std::pow(std::abs(static_cast<double>(stats[pos])), gseaParam);
-    }
+    for (auto pos : positions) nr += weight(stats[pos]);
     if (nr <= 0.0) return {};
 
     double const negStep = 1.0 / static_cast<double>(n - k);
-    double       cur     = 0.0;
-    double       best    = 0.0;
-    std::optional<std::int32_t> bestIdx{};
-    std::int64_t prev    = -1;
-    std::int32_t i       = 0;
+    double const invNR   = 1.0 / nr;
 
-    auto track = [&](double signedCur) {
-        switch (scoreType) {
-            case ScoreType::Std:
-                if (std::abs(signedCur) > std::abs(best)) {
-                    best = signedCur; bestIdx = i;
-                }
-                break;
-            case ScoreType::Pos:
-                if (signedCur > best) { best = signedCur; bestIdx = i; }
-                break;
-            case ScoreType::Neg:
-                if (signedCur < best) { best = signedCur; bestIdx = i; }
-                break;
+    auto walk = [&](auto better) -> EsResult {
+        double cur = 0.0, best = 0.0;
+        std::optional<std::int32_t> bestIdx{};
+        std::int64_t prev = -1;
+        std::int32_t i    = 0;
+        for (auto pos : positions) {
+            cur -= negStep * static_cast<double>(pos - prev - 1);
+            cur += weight(stats[pos]) * invNR;
+            if (better(cur, best)) { best = cur; bestIdx = i; }
+            prev = pos;
+            ++i;
         }
+        return {best, bestIdx};
     };
 
-    for (auto pos : positions) {
-        cur -= negStep * static_cast<double>(pos - prev - 1);
-        cur += std::pow(std::abs(static_cast<double>(stats[pos])), gseaParam) / nr;
-        track(cur);
-        prev = pos;
-        ++i;
+    switch (scoreType) {
+        case ScoreType::Std: return walk([](double cur, double best) {
+            return std::abs(cur) > std::abs(best);
+        });
+        case ScoreType::Pos: return walk(std::greater<double>{});
+        case ScoreType::Neg: return walk(std::less<double>{});
     }
-    return {best, bestIdx};
+    return {};
 }
 
 // Result for an entire fgsea() call.
@@ -161,6 +159,17 @@ struct PermSummary { double pval; double nes; std::int64_t nMoreExtreme; };
     double const p = static_cast<double>(nMore + 1)
                    / static_cast<double>(static_cast<std::int64_t>(permEs.size()) + 1);
     return {p, nes, nMore};
+}
+
+// SplitMix64 (Steele, Lea, Flood). A single round of avalanche over a 64-bit
+// integer. We use it as a deterministic seed mixer — given a master seed and
+// a permutation index, splitmix(seed ^ idx) gives a high-entropy per-task
+// seed that's reproducible across parallel runs.
+[[nodiscard]] inline constexpr std::uint64_t splitmix(std::uint64_t x) noexcept {
+    x += 0x9E3779B97F4A7C15ULL;
+    x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    x = (x ^ (x >> 27)) * 0x94D049BB133111EBULL;
+    return x ^ (x >> 31);
 }
 
 // Draw k distinct integers from [0, n) into out[0..k). Floyd's algorithm —

@@ -42,13 +42,6 @@ inline std::int64_t chunkBatchSize(std::int64_t n, std::int64_t bytesBudget) {
     return std::max<std::int64_t>(maxB, 1);
 }
 
-inline std::uint64_t splitmix(std::uint64_t x) {
-    x += 0x9E3779B97F4A7C15ULL;
-    x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ULL;
-    x = (x ^ (x >> 27)) * 0x94D049BB133111EBULL;
-    return x ^ (x >> 31);
-}
-
 } // namespace detail
 
 [[nodiscard]] inline std::vector<PathwayResult> runFgsea(FgseaInput const& in) {
@@ -106,7 +99,7 @@ inline std::uint64_t splitmix(std::uint64_t x) {
             while (done < in.nperm) {
                 auto B = std::min<std::int64_t>(chunk, in.nperm - done);
                 std::int64_t chunkSeed = static_cast<std::int64_t>(
-                    detail::splitmix(static_cast<std::uint64_t>(in.seed) ^
+                    fsgea::splitmix(static_cast<std::uint64_t>(in.seed) ^
                                      (static_cast<std::uint64_t>(pIdx) << 17) ^
                                      static_cast<std::uint64_t>(done)));
                 auto es = gpu::permEsBatchTorch(
@@ -119,7 +112,7 @@ inline std::uint64_t splitmix(std::uint64_t x) {
         } else
 #endif
         {
-            std::uint64_t seed = detail::splitmix(
+            std::uint64_t seed = fsgea::splitmix(
                 static_cast<std::uint64_t>(in.seed) ^
                 (static_cast<std::uint64_t>(pIdx) << 17));
             permEs = cpu::permEsBatch(statsSpan, k, in.nperm,

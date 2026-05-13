@@ -29,21 +29,14 @@ inline std::vector<double> permEsBatch(
     auto const n = static_cast<std::int64_t>(stats.size());
     std::vector<double> out(static_cast<std::size_t>(B));
 
-    // Each permutation gets its own splitmix-derived seed so parallel
-    // execution is deterministic given the master seed.
-    auto splitmix = [](std::uint64_t x) {
-        x += 0x9E3779B97F4A7C15ULL;
-        x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ULL;
-        x = (x ^ (x >> 27)) * 0x94D049BB133111EBULL;
-        return x ^ (x >> 31);
-    };
-
+    // Per-permutation splitmix-derived seed so par_unseq is deterministic.
     std::vector<std::int64_t> perms(static_cast<std::size_t>(B));
     std::iota(perms.begin(), perms.end(), 0);
 
     std::for_each(fsgea::par, perms.begin(), perms.end(),
         [&](std::int64_t b) {
-            std::mt19937_64 rng(splitmix(seed ^ static_cast<std::uint64_t>(b)));
+            std::mt19937_64 rng(fsgea::splitmix(
+                seed ^ static_cast<std::uint64_t>(b)));
             std::vector<std::int32_t> pos(static_cast<std::size_t>(k));
             sampleWithoutReplacement(n, k, std::span<std::int32_t>(pos), rng);
             auto r = calcEs(stats, pos, gseaParam, scoreType);

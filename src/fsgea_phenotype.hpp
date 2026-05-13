@@ -147,13 +147,6 @@ struct Welford {
     return 0.0;
 }
 
-inline std::uint64_t splitmix(std::uint64_t x) noexcept {
-    x += 0x9E3779B97F4A7C15ULL;
-    x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ULL;
-    x = (x ^ (x >> 27)) * 0x94D049BB133111EBULL;
-    return x ^ (x >> 31);
-}
-
 // Per-permutation working state. Reused via thread-local arenas would be
 // nice but `par_unseq` doesn't let us hold thread-local refs cleanly, so we
 // allocate per call; the cost is one O(G) vector per permutation, dwarfed
@@ -176,7 +169,11 @@ struct PermScratch {
 };
 
 // Score every gene under one label assignment. Linear in S·G; the inner
-// loop is contiguous in memory (exprs is row-major by gene).
+// loop is contiguous in memory (exprs is row-major by gene). The outer
+// loop runs through `fsgea::par` so the observed pass parallelises across
+// genes; the permutation null already parallelises across permutations
+// at an outer level, so this is only the cheap one-shot path. Each gene's
+// Welford state is local — no data races.
 inline void scoreAllGenes(
     Input const& in,
     std::span<std::int8_t const> labels_perm,
@@ -184,16 +181,18 @@ inline void scoreAllGenes(
 {
     auto const G = in.n_genes;
     auto const S = in.n_samples;
-    for (std::int64_t g = 0; g < G; ++g) {
-        Welford a, b;
-        auto const row = in.exprs.data() + g * S;
-        for (std::int64_t s = 0; s < S; ++s) {
-            (labels_perm[static_cast<std::size_t>(s)] == 0 ? a : b)
-                .push(row[s]);
-        }
-        out_stats[static_cast<std::size_t>(g)] =
-            computeMetric(in.metric, a, b);
-    }
+    auto idx = std::ranges::iota_view<std::int64_t, std::int64_t>(0, G);
+    std::for_each(fsgea::par, idx.begin(), idx.end(),
+        [&](std::int64_t g) {
+            Welford a, b;
+            auto const row = in.exprs.data() + g * S;
+            for (std::int64_t s = 0; s < S; ++s) {
+                (labels_perm[static_cast<std::size_t>(s)] == 0 ? a : b)
+                    .push(row[s]);
+            }
+            out_stats[static_cast<std::size_t>(g)] =
+                computeMetric(in.metric, a, b);
+        });
 }
 
 inline void argsortDesc(std::span<double const> stats,
@@ -362,7 +361,7 @@ namespace fsgea::phenotype {
         for (std::int64_t done = 0; done < in.nperm; done += CHUNK) {
             std::int64_t const B = std::min<std::int64_t>(CHUNK, in.nperm - done);
             std::int64_t const chunkSeed = static_cast<std::int64_t>(
-                detail::splitmix(static_cast<std::uint64_t>(in.seed) ^
+                fsgea::splitmix(static_cast<std::uint64_t>(in.seed) ^
                                  static_cast<std::uint64_t>(done)));
             auto es = fsgea::phenotype::gpu::runBatch(
                 in, exprs_t, labels_t, pathways_t, B, chunkSeed, td);
@@ -382,7 +381,7 @@ namespace fsgea::phenotype {
     auto idx = std::ranges::iota_view<std::int64_t, std::int64_t>(0, in.nperm);
     std::for_each(fsgea::par, idx.begin(), idx.end(),
         [&](std::int64_t b) {
-            std::mt19937_64 rng(detail::splitmix(
+            std::mt19937_64 rng(fsgea::splitmix(
                 static_cast<std::uint64_t>(in.seed) ^
                 static_cast<std::uint64_t>(b)));
 
