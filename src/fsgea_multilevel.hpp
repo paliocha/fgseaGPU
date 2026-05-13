@@ -11,13 +11,14 @@
 //
 // Each MCMC chain is sequential (each move conditions on the previous
 // state), so the parallelism here comes from running pathways concurrently
-// via std::execution::par_unseq. The GPU path doesn't help — this is a
+// via fsgea::par. The GPU path doesn't help — this is a
 // fundamentally serial-per-chain algorithm and that's the price of being
 // able to probe p-values down to 1e-50.
 
 #pragma once
 
 #include "fsgea_core.hpp"
+#include "fsgea_exec.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -310,7 +311,7 @@ struct PathwayMlResult {
         return x ^ (x >> 27);
     };
 
-    std::for_each(std::execution::par_unseq, idx.begin(), idx.end(),
+    std::for_each(fsgea::par, idx.begin(), idx.end(),
         [&](std::size_t i) {
             auto const& pos = pathwayPositions[i];
             auto const obs = calcEs(stats,

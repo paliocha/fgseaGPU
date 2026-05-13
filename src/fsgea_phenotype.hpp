@@ -14,7 +14,7 @@
 //   3. Per-(permutation × pathway) ES walk — same algebra as the preranked
 //      kernel, just with stats varying per row instead of being shared.
 //
-// CPU engine (this file): `std::execution::par_unseq` outer-loop over
+// CPU engine (this file): `fsgea::par` outer-loop over
 // permutations; each thread carries a per-gene Welford accumulator pair
 // and an O(G) scratch arena. Reproducible from a single master seed via
 // splitmix-derived per-permutation seeds.
@@ -29,6 +29,7 @@
 
 #include "fsgea_core.hpp"
 #include "fsgea_cpu.hpp"
+#include "fsgea_exec.hpp"
 #include "fsgea_gpu.hpp"     // for gpu::resolveDevice/torchAvailable
 #include "fsgea_qvalue.hpp"
 
@@ -379,7 +380,7 @@ namespace fsgea::phenotype {
 #endif
     {
     auto idx = std::ranges::iota_view<std::int64_t, std::int64_t>(0, in.nperm);
-    std::for_each(std::execution::par_unseq, idx.begin(), idx.end(),
+    std::for_each(fsgea::par, idx.begin(), idx.end(),
         [&](std::int64_t b) {
             std::mt19937_64 rng(detail::splitmix(
                 static_cast<std::uint64_t>(in.seed) ^

@@ -1,17 +1,17 @@
 # Makevars — POSIX build (Linux, macOS).
 #
-# TBB powers std::execution::par_unseq under libstdc++. We detect it first
-# via pkg-config (works on every Linux distro and macOS-with-Homebrew that
-# has pkg-config on PATH), then fall back to Homebrew's prefix on macOS,
-# then to a bare `-ltbb` on the assumption that the linker can find it.
+# Parallel std::execution requires Intel TBB at link time on libstdc++,
+# and is unreliable on Apple libc++. We detect TBB via pkg-config first
+# (works on most Linux distros), then fall back to Homebrew on macOS, then
+# accept that we couldn't find it. `FSGEA_PARALLEL` is only defined when
+# TBB is actually wired in; without it the package compiles cleanly and
+# uses `std::execution::seq` (see src/fsgea_exec.hpp).
 #
-# The optional Torch backend is enabled by setting FSGEA_TORCH=1 and
+# The optional LibTorch backend is enabled by setting FSGEA_TORCH=1 and
 # pointing FSGEA_TORCH_HOME at an unpacked LibTorch distribution.
 
 CXX_STD = CXX20
 
-# R provides its own optimization flags via Makeconf — don't override here;
-# CRAN forbids hard-coded -O3, -march=native, etc. in PKG_CXXFLAGS.
 PKG_CPPFLAGS = -I.
 
 # Threading
@@ -20,20 +20,16 @@ PKG_LIBS = -lpthread
 # --- TBB detection ---------------------------------------------------------
 TBB_VIA_PKG_CONFIG := $(shell pkg-config --exists tbb && echo 1)
 ifeq ($(TBB_VIA_PKG_CONFIG),1)
-  PKG_CPPFLAGS += $(shell pkg-config --cflags tbb)
+  PKG_CPPFLAGS += $(shell pkg-config --cflags tbb) -DFSGEA_PARALLEL
   PKG_LIBS    += $(shell pkg-config --libs tbb)
 else
   UNAME_S := $(shell uname -s)
   ifeq ($(UNAME_S),Darwin)
     BREW_TBB := $(shell brew --prefix tbb 2>/dev/null)
     ifneq ($(BREW_TBB),)
-      PKG_CPPFLAGS += -I$(BREW_TBB)/include
+      PKG_CPPFLAGS += -I$(BREW_TBB)/include -DFSGEA_PARALLEL
       PKG_LIBS    += -L$(BREW_TBB)/lib -ltbb
-    else
-      PKG_LIBS    += -ltbb
     endif
-  else
-    PKG_LIBS += -ltbb
   endif
 endif
 

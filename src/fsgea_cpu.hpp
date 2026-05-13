@@ -1,12 +1,13 @@
 // fsgea_cpu.hpp — C++23 parallel CPU backend.
 //
-// Uses std::execution::par_unseq for the outer permutation loop and operates
+// Uses fsgea::par for the outer permutation loop and operates
 // on flat row-major buffers so the same kernel can be JIT'd to vectorised
 // instructions on x86_64, AArch64, etc.
 
 #pragma once
 
 #include "fsgea_core.hpp"
+#include "fsgea_exec.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -40,7 +41,7 @@ inline std::vector<double> permEsBatch(
     std::vector<std::int64_t> perms(static_cast<std::size_t>(B));
     std::iota(perms.begin(), perms.end(), 0);
 
-    std::for_each(std::execution::par_unseq, perms.begin(), perms.end(),
+    std::for_each(fsgea::par, perms.begin(), perms.end(),
         [&](std::int64_t b) {
             std::mt19937_64 rng(splitmix(seed ^ static_cast<std::uint64_t>(b)));
             std::vector<std::int32_t> pos(static_cast<std::size_t>(k));

@@ -10,10 +10,11 @@
 // q the observed overlap. We compute it in log space via lgamma to stay
 // stable for large universes.
 //
-// Embarrassingly parallel across pathways — std::execution::par_unseq.
+// Embarrassingly parallel across pathways — fsgea::par.
 
 #pragma once
 
+#include "fsgea_exec.hpp"
 #include "fsgea_qvalue.hpp"
 
 #include <algorithm>
@@ -121,7 +122,7 @@ inline TailAndPmf upperTailAndPmf(std::int64_t q, std::int64_t N,
     std::vector<std::size_t> outIdx(kept.size());
     std::iota(outIdx.begin(), outIdx.end(), 0);
 
-    std::for_each(std::execution::par_unseq, outIdx.begin(), outIdx.end(),
+    std::for_each(fsgea::par, outIdx.begin(), outIdx.end(),
         [&](std::size_t i) {
             std::size_t const pIdx = kept[i];
             auto const& members = in.pathwayMembers[pIdx]; // already sorted
