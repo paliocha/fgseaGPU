@@ -2,11 +2,11 @@
 // returns a list-of-vectors that R wraps into a data.table.
 
 #include <Rcpp.h>
-#include "fsgea_dispatch.hpp"
-#include "fsgea_multilevel.hpp"
-#include "fsgea_fora.hpp"
-#include "fsgea_phenotype.hpp"
-#include "fsgea_qvalue.hpp"
+#include "fsgea_dispatch.h"
+#include "fsgea_multilevel.h"
+#include "fsgea_fora.h"
+#include "fsgea_phenotype.h"
+#include "fsgea_qvalue.h"
 
 using namespace Rcpp;
 

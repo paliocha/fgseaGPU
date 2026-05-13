@@ -1,0 +1,11 @@
+# Makevars.in — POSIX-portable template processed by the top-level
+# configure script. The configure step substitutes the @VAR@ tokens
+# below from environment / detection results and writes the final
+# src/Makevars. This indirection keeps the in-tree Makevars free of
+# GNU-make extensions (no `:=`, `+=`, `$(shell)`, `ifeq`) so that
+# `R CMD check --as-cran` stays clean.
+
+CXX_STD = CXX20
+
+PKG_CPPFLAGS = -I. @TBB_CPPFLAGS@ @TORCH_CPPFLAGS@ @PRECISE_CPPFLAGS@
+PKG_LIBS = -lpthread @TBB_LIBS@ @TORCH_LIBS@

@@ -1,0 +1,7 @@
+^src/Makevars$
+^bench$
+^tests/cpp$
+^CMakeLists\.txt$
+^\.github$
+^\.lintr$
+^\.claude$

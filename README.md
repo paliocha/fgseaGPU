@@ -34,10 +34,10 @@ fsgea-gpu/
 ├── LICENSE                         # MIT, with upstream attribution
 ├── R/fgsea.R                       # public R API
 ├── src/
-│   ├── fsgea_core.hpp              # algorithm definition + types
-│   ├── fsgea_cpu.hpp               # std::execution CPU backend
-│   ├── fsgea_gpu.hpp               # LibTorch GPU backend (opt-in)
-│   ├── fsgea_dispatch.hpp          # picks device, chunks batch
+│   ├── fsgea_core.h                # algorithm definition + types
+│   ├── fsgea_cpu.h                 # std::execution CPU backend
+│   ├── fsgea_gpu.h                 # LibTorch GPU backend (opt-in)
+│   ├── fsgea_dispatch.h            # picks device, chunks batch
 │   ├── rcpp_glue.cpp               # R <-> C++ marshalling
 │   ├── RcppExports.cpp
 │   └── Makevars                    # R build (Linux, macOS)

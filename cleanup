@@ -1,0 +1,4 @@
+#!/bin/sh
+# cleanup — remove configure-generated artefacts. Invoked by
+# `R CMD build` post-build to keep the source tarball clean.
+rm -f src/Makevars

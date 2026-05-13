@@ -1,10 +1,10 @@
 // test_core.cpp — header-only C++ tests for the CPU path. No Torch needed.
 
-#include "../../src/fsgea_dispatch.hpp"
-#include "../../src/fsgea_multilevel.hpp"
-#include "../../src/fsgea_fora.hpp"
-#include "../../src/fsgea_phenotype.hpp"
-#include "../../src/fsgea_qvalue.hpp"
+#include "../../src/fsgea_dispatch.h"
+#include "../../src/fsgea_multilevel.h"
+#include "../../src/fsgea_fora.h"
+#include "../../src/fsgea_phenotype.h"
+#include "../../src/fsgea_qvalue.h"
 
 #include <cassert>
 #include <cmath>

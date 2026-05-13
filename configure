@@ -1,0 +1,82 @@
+#!/bin/sh
+# configure — emit a portable src/Makevars from src/Makevars.in.
+#
+# Replaces an earlier GNU-make-extension-heavy Makevars that R CMD
+# check --as-cran flagged for use of `:=`, `+=`, `$(shell)` and
+# `ifeq ... endif`. Detection happens here in sh, the resulting
+# Makevars uses only POSIX make assignments.
+#
+# Honoured environment variables:
+#
+#   FSGEA_PRECISE       1 (default) → compile with Neumaier-compensated
+#                       summation in calcEs's running-sum walk; set to 0
+#                       to opt out and pay only a plain `+=` per step.
+#
+#   FSGEA_TORCH         1 → build the optional LibTorch backend. Requires
+#                       FSGEA_TORCH_HOME to point at an unpacked LibTorch
+#                       distribution.
+#
+#   FSGEA_TORCH_HOME    Path to LibTorch (must contain include/ and lib/).
+#
+#   FSGEA_TORCH_CUDA    1 → also link -ltorch_cuda -lc10_cuda.
+#
+# TBB (and therefore std::execution::par_unseq) is auto-detected via
+# pkg-config on non-Darwin hosts. Apple's libc++ does not ship parallel
+# std::execution at all, so the package always falls through to the
+# sequential policy on macOS regardless of whether libtbb is installed.
+
+set -e
+
+TBB_CPPFLAGS=""
+TBB_LIBS=""
+
+uname_s="$(uname -s 2>/dev/null || echo unknown)"
+case "${uname_s}" in
+    Darwin)
+        : # Apple libc++ — no <execution> policy tags. Skip TBB entirely.
+        ;;
+    *)
+        if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists tbb 2>/dev/null; then
+            TBB_CPPFLAGS="$(pkg-config --cflags tbb) -DFSGEA_PARALLEL"
+            TBB_LIBS="$(pkg-config --libs tbb)"
+        fi
+        ;;
+esac
+
+# Default: compensated accumulation on. Costs two extra fp adds per
+# member in the running-sum walk; pays off whenever ES values cluster
+# near zero or pathway sizes are pathological. Set FSGEA_PRECISE=0 in
+# the environment to opt out.
+PRECISE_CPPFLAGS="-DFSGEA_PRECISE_ACCUM"
+if [ "x${FSGEA_PRECISE}" = "x0" ]; then
+    PRECISE_CPPFLAGS=""
+fi
+
+TORCH_CPPFLAGS=""
+TORCH_LIBS=""
+if [ "x${FSGEA_TORCH}" = "x1" ]; then
+    if [ -z "${FSGEA_TORCH_HOME}" ]; then
+        echo "configure: FSGEA_TORCH=1 requires FSGEA_TORCH_HOME to point at a LibTorch install" >&2
+        exit 1
+    fi
+    TORCH_CPPFLAGS="-DFSGEA_WITH_TORCH -I${FSGEA_TORCH_HOME}/include -I${FSGEA_TORCH_HOME}/include/torch/csrc/api/include"
+    TORCH_LIBS="-L${FSGEA_TORCH_HOME}/lib -Wl,-rpath,${FSGEA_TORCH_HOME}/lib -ltorch -ltorch_cpu -lc10"
+    if [ "x${FSGEA_TORCH_CUDA}" = "x1" ]; then
+        TORCH_LIBS="${TORCH_LIBS} -ltorch_cuda -lc10_cuda"
+    fi
+fi
+
+# Substitute @TOKEN@ placeholders into src/Makevars. Using `|` as the
+# sed delimiter keeps file paths (which may contain `/`) untouched.
+sed \
+    -e "s|@TBB_CPPFLAGS@|${TBB_CPPFLAGS}|" \
+    -e "s|@TBB_LIBS@|${TBB_LIBS}|" \
+    -e "s|@TORCH_CPPFLAGS@|${TORCH_CPPFLAGS}|" \
+    -e "s|@TORCH_LIBS@|${TORCH_LIBS}|" \
+    -e "s|@PRECISE_CPPFLAGS@|${PRECISE_CPPFLAGS}|" \
+    src/Makevars.in > src/Makevars
+
+echo "configure: wrote src/Makevars"
+echo "configure:   TBB        ${TBB_CPPFLAGS:-disabled}"
+echo "configure:   Torch      ${TORCH_CPPFLAGS:-disabled}"
+echo "configure:   Precise    ${PRECISE_CPPFLAGS:-disabled (FSGEA_PRECISE=0)}"

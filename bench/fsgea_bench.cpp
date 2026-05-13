@@ -5,7 +5,7 @@
 //
 // Usage: fsgea_bench [n=20000] [p=500] [k=100] [nperm=1000] [device=auto]
 
-#include "../src/fsgea_dispatch.hpp"
+#include "../src/fsgea_dispatch.h"
 
 #include <chrono>
 #include <iostream>
