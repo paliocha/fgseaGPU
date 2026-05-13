@@ -34,7 +34,6 @@ struct Config {
     double       eps{1e-50};        // stop building levels once p < eps
     double       moveScale{1.0};    // MCMC iterations per move scaling factor
     std::int64_t seed{42};
-    bool         oneSided{false};   // true => use scoreType=Pos exclusively
 };
 
 struct Result {
@@ -80,10 +79,6 @@ inline double log2errEstimate(std::int64_t levels, std::int64_t N) {
     return std::sqrt(var) / std::log(2.0);
 }
 
-inline ScoreType collapseToPositive(ScoreType s) noexcept {
-    return s == ScoreType::Neg ? ScoreType::Pos : s;
-}
-
 } // namespace detail
 
 class EsRuler {
@@ -93,26 +88,22 @@ public:
             double gseaParam,
             ScoreType scoreType,
             Config cfg)
-      : stats_(stats), k_(k),
-        gseaParam_(gseaParam),
-        signedScore_(scoreType),
-        cfg_(cfg)
+      : k_(k), gseaParam_(gseaParam), cfg_(cfg)
     {
         if (cfg_.sampleSize < 3 || (cfg_.sampleSize % 2) == 0) {
             throw std::invalid_argument(
                 "multilevel sampleSize must be odd and >= 3");
         }
-        // For scoreType == Neg we negate stats and treat the problem as the
-        // positive-side tail; the answer is symmetric. For Std we score by
-        // |running-sum extremum| which equals the positive-side ES of a
-        // suitable signed walk; equivalent here.
+        // The algorithm always works against the positive-side tail. For
+        // scoreType == Neg we flip the rank vector so the negative tail
+        // becomes the positive tail of an equivalent problem.
         if (scoreType == ScoreType::Neg) {
-            negatedStats_.assign(stats.begin(), stats.end());
+            negatedStats_.assign(stats.rbegin(), stats.rend());
             for (auto& s : negatedStats_) s = -s;
-            std::ranges::reverse(negatedStats_); // keep "decreasing" order
             stats_ = std::span<double const>(negatedStats_);
+        } else {
+            stats_ = stats;
         }
-        scoreType_ = ScoreType::Pos;
     }
 
     // Build levels up to (and including) the one that brackets |obsEs|, or
@@ -124,15 +115,22 @@ public:
         std::mt19937_64 rng(static_cast<std::uint64_t>(cfg_.seed));
         auto const N = static_cast<std::size_t>(cfg_.sampleSize);
 
-        // Initial uniform-random sample of N gene sets and their ES values.
+        // Per-chain membership bitmap, allocated once. The inner MCMC loop
+        // tests "is this gene already in the chain?" billions of times for
+        // large pathways — a bitmap is two orders of magnitude faster than
+        // std::ranges::find on a small sorted vector.
+        std::vector<std::vector<char>> member(N,
+            std::vector<char>(static_cast<std::size_t>(n), 0));
+
         std::vector<std::vector<std::int32_t>> chains(N);
         std::vector<double> es(N);
         for (std::size_t i = 0; i < N; ++i) {
             chains[i].resize(static_cast<std::size_t>(k_));
             sampleWithoutReplacement(n, k_,
                 std::span<std::int32_t>(chains[i]), rng);
+            for (auto g : chains[i]) member[i][static_cast<std::size_t>(g)] = 1;
             es[i] = calcEs(stats_, std::span<std::int32_t const>(chains[i]),
-                           gseaParam_, scoreType_).es;
+                           gseaParam_, kInternalScore).es;
         }
 
         thresholds_.clear();
@@ -141,12 +139,17 @@ public:
             1, static_cast<std::int64_t>(
                    std::ceil(cfg_.moveScale * static_cast<double>(k_))));
 
+        auto snapshotFinal = [&](std::vector<std::size_t> const& order) {
+            finalEs_.assign(order.size(), 0.0);
+            for (std::size_t r = 0; r < order.size(); ++r)
+                finalEs_[r] = es[order[r]];
+        };
+
         // Build levels until the median of |ES| exceeds the observed value,
         // or until we've descended below the eps p-value floor.
         double const floorL = -std::log2(cfg_.eps); // max levels before floor
         std::int64_t level = 0;
         while (true) {
-            // Sort by ES ascending; median is at index N/2.
             std::vector<std::size_t> order(N);
             std::iota(order.begin(), order.end(), 0);
             std::ranges::sort(order, [&](std::size_t a, std::size_t b) {
@@ -156,31 +159,21 @@ public:
             double const medianEs = es[order[N / 2]];
             thresholds_.push_back(medianEs);
 
-            if (medianEs >= absObsEs) {
-                // Final level brackets observed — we'll use this population.
-                finalEs_.clear();
-                finalEs_.reserve(N);
-                for (std::size_t idx : order) finalEs_.push_back(es[idx]);
+            if (medianEs >= absObsEs) {        // bracketed observed
+                snapshotFinal(order);
                 return;
             }
-            if (static_cast<double>(level + 1) >= floorL) {
+            if (static_cast<double>(level + 1) >= floorL) {  // hit eps floor
                 floored_ = true;
-                finalEs_.clear();
-                finalEs_.reserve(N);
-                for (std::size_t idx : order) finalEs_.push_back(es[idx]);
+                snapshotFinal(order);
                 return;
             }
 
-            // Top half survives; bottom half gets replaced with copies of
-            // randomly chosen survivors, then mixed by MCMC.
-            std::size_t const surviveStart = N / 2 + 1; // strictly above median
+            std::size_t const surviveStart = N / 2 + 1;     // strictly above median
             std::size_t const survivors    = N - surviveStart;
-            if (survivors == 0) {
-                // Degenerate: all values tied at median; can't split further.
+            if (survivors == 0) {              // all-tied: cannot split further
                 floored_ = true;
-                finalEs_.clear();
-                finalEs_.reserve(N);
-                for (std::size_t idx : order) finalEs_.push_back(es[idx]);
+                snapshotFinal(order);
                 return;
             }
 
@@ -190,12 +183,14 @@ public:
                 std::size_t const dst = order[j];
                 chains[dst] = chains[src];
                 es[dst]     = es[src];
+                std::ranges::fill(member[dst], 0);
+                for (auto g : chains[dst])
+                    member[dst][static_cast<std::size_t>(g)] = 1;
             }
 
-            // MCMC mix each chain under the constraint |ES| >= medianEs.
             for (std::size_t j = 0; j < N; ++j) {
                 for (std::int64_t step = 0; step < mcmcSteps; ++step) {
-                    mcmcMove(chains[j], es[j], medianEs, rng);
+                    mcmcMove(chains[j], member[j], es[j], medianEs, rng);
                 }
             }
 
@@ -226,56 +221,61 @@ public:
     }
 
 private:
-    std::span<double const>   stats_;
-    std::vector<double>       negatedStats_;
+    static constexpr ScoreType kInternalScore = ScoreType::Pos;
+
+    std::span<double const>   stats_;        // points at negatedStats_ for Neg
+    std::vector<double>       negatedStats_; // owns flipped stats when Neg
     std::int64_t              k_;
     double                    gseaParam_;
-    ScoreType                 signedScore_;  // as requested by caller
-    ScoreType                 scoreType_;    // collapsed to Pos internally
     Config                    cfg_;
     std::vector<double>       thresholds_;
     std::vector<double>       finalEs_;
     bool                      floored_{false};
 
-    // Single Metropolis–Hastings move: pick a member, replace with a uniform
-    // non-member; accept if the new ES still satisfies the level constraint.
+    // Single Metropolis–Hastings move: pick a member, swap it with a
+    // uniform non-member, accept if the new ES still satisfies the level
+    // constraint. The membership bitmap collapses the "is this gene already
+    // in the chain?" check from O(k) find to O(1) lookup.
     void mcmcMove(std::vector<std::int32_t>& chain,
-                  double& chainEs,
-                  double threshold,
-                  std::mt19937_64& rng) const
+                  std::vector<char>&         member,
+                  double&                    chainEs,
+                  double                     threshold,
+                  std::mt19937_64&           rng) const
     {
         auto const n = static_cast<std::int64_t>(stats_.size());
         std::uniform_int_distribution<std::int32_t>
-            posDist(0, static_cast<std::int32_t>(k_ - 1));
+            slotDist(0, static_cast<std::int32_t>(k_ - 1));
         std::uniform_int_distribution<std::int32_t>
             geneDist(0, static_cast<std::int32_t>(n - 1));
 
-        std::int32_t const slot = posDist(rng);
+        std::int32_t const slot    = slotDist(rng);
         std::int32_t const oldGene = chain[static_cast<std::size_t>(slot)];
 
-        // Sample a new gene not already in the chain.
         std::int32_t newGene;
         do {
             newGene = geneDist(rng);
-        } while (std::ranges::find(chain, newGene) != chain.end());
+        } while (member[static_cast<std::size_t>(newGene)]);
 
-        // Replace and re-sort the chain (k is typically small; O(k) insert).
-        chain[static_cast<std::size_t>(slot)] = newGene;
+        // Apply the swap and keep the chain sorted by a single linear-scan
+        // shift (k is typically small enough that this beats sorting).
+        member[static_cast<std::size_t>(oldGene)] = 0;
+        member[static_cast<std::size_t>(newGene)] = 1;
+        chain[static_cast<std::size_t>(slot)]    = newGene;
         std::ranges::sort(chain);
 
         double const newEs = calcEs(
             stats_, std::span<std::int32_t const>(chain),
-            gseaParam_, scoreType_).es;
+            gseaParam_, kInternalScore).es;
 
         if (newEs >= threshold) {
             chainEs = newEs;
             return;
         }
-        // Reject — restore.
-        auto it = std::ranges::find(chain, newGene);
-        *it = oldGene;
+        // Reject and restore.
+        member[static_cast<std::size_t>(newGene)] = 0;
+        member[static_cast<std::size_t>(oldGene)] = 1;
+        *std::ranges::find(chain, newGene) = oldGene;
         std::ranges::sort(chain);
-        // chainEs unchanged
     }
 };
 
@@ -289,7 +289,7 @@ struct PathwayMlResult {
     bool   floored;
 };
 
-inline std::vector<PathwayMlResult> runMultilevel(
+[[nodiscard]] inline std::vector<PathwayMlResult> runMultilevel(
     std::span<double const> stats,
     std::vector<std::vector<std::int32_t>> const& pathwayPositions,
     double gseaParam,
@@ -300,32 +300,33 @@ inline std::vector<PathwayMlResult> runMultilevel(
     std::vector<std::size_t> idx(pathwayPositions.size());
     std::iota(idx.begin(), idx.end(), 0);
 
+    auto const orient = [scoreType](double es) {
+        if (scoreType != ScoreType::Std) return scoreType;
+        return es >= 0 ? ScoreType::Pos : ScoreType::Neg;
+    };
+    auto const splitmix = [](std::uint64_t x) {
+        x += 0x9E3779B97F4A7C15ULL;
+        x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ULL;
+        return x ^ (x >> 27);
+    };
+
     std::for_each(std::execution::par_unseq, idx.begin(), idx.end(),
         [&](std::size_t i) {
             auto const& pos = pathwayPositions[i];
-            auto obs = calcEs(stats,
-                              std::span<std::int32_t const>(pos),
-                              gseaParam, scoreType);
+            auto const obs = calcEs(stats,
+                                    std::span<std::int32_t const>(pos),
+                                    gseaParam, scoreType);
 
             Config local = cfg;
-            // Per-pathway seed derivation so parallel work is deterministic.
             local.seed = static_cast<std::int64_t>(
-                static_cast<std::uint64_t>(cfg.seed) ^
-                (static_cast<std::uint64_t>(i) * 0x9E3779B97F4A7C15ULL));
-
-            ScoreType const oriented =
-                (scoreType == ScoreType::Std && obs.es < 0)
-                    ? ScoreType::Neg
-                    : (scoreType == ScoreType::Std ? ScoreType::Pos : scoreType);
+                splitmix(static_cast<std::uint64_t>(cfg.seed) ^
+                         static_cast<std::uint64_t>(i)));
 
             EsRuler ruler(stats,
                           static_cast<std::int64_t>(pos.size()),
-                          gseaParam,
-                          oriented,
-                          local);
+                          gseaParam, orient(obs.es), local);
             ruler.extend(std::abs(obs.es));
-            auto r = ruler.pvalue(std::abs(obs.es));
-
+            auto const r = ruler.pvalue(std::abs(obs.es));
             out[i] = {obs.es, r.pval, r.log2err, r.floored};
         });
     return out;

@@ -134,6 +134,50 @@ void test_midp_bounded_by_p() {
     }
 }
 
+void test_edge_singleton_set() {
+    // k = 1: the running sum spikes to w_0 / NR = 1 at the member's position
+    // and decays to zero. ES under Std/Pos is exactly 1.
+    std::vector<double> stats{3, 2, 1, -1, -2, -3};
+    std::vector<std::int32_t> pos{0};
+    auto r = fsgea::calcEs(std::span<double const>(stats),
+                           std::span<std::int32_t const>(pos),
+                           1.0, fsgea::ScoreType::Std);
+    assert(near(r.es, 1.0));
+    assert(r.leadingEdgeEnd.has_value());
+}
+
+void test_edge_nperm_zero_throws() {
+    fsgea::FgseaInput in;
+    in.stats = {3, 2, 1, -1, -2, -3};
+    in.pathwayNames = {"top"};
+    in.pathwayPositions = {{0, 1}};
+    in.nperm = 0;
+    bool threw = false;
+    try { (void) fsgea::runFgsea(in); }
+    catch (std::invalid_argument const&) { threw = true; }
+    assert(threw);
+}
+
+void test_edge_empty_pathways() {
+    fsgea::FgseaInput in;
+    in.stats = {3, 2, 1, -1, -2, -3};
+    in.nperm = 10;
+    auto out = fsgea::runFgsea(in);
+    assert(out.empty());
+}
+
+void test_edge_oversized_pathway_filtered() {
+    fsgea::FgseaInput in;
+    in.stats = {3, 2, 1, -1, -2, -3};
+    in.pathwayNames = {"all", "ok"};
+    in.pathwayPositions = {{0, 1, 2, 3, 4, 5}, {0, 1}};
+    in.nperm = 50;
+    in.maxSize = 4;
+    auto out = fsgea::runFgsea(in);
+    assert(out.size() == 1);
+    assert(out[0].pathway == "ok");
+}
+
 void test_fora_matches_hypergeometric() {
     // N=100, m=20, k=14, q=8: matches our R test case
     fsgea::fora::Input in;
@@ -162,6 +206,10 @@ int main() {
     test_multilevel_basic();
     test_qvalue_monotone_and_bounded_by_bh();
     test_midp_bounded_by_p();
+    test_edge_singleton_set();
+    test_edge_nperm_zero_throws();
+    test_edge_empty_pathways();
+    test_edge_oversized_pathway_filtered();
     test_fora_matches_hypergeometric();
     std::cout << "All C++ core tests passed.\n";
     return 0;

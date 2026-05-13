@@ -45,15 +45,16 @@ fgsea <- function(pathways, stats,
                   maxSize   = length(stats) - 1L,
                   gseaParam = 1, ...) {
     args <- list(...)
-    if ("nperm" %in% names(args)) {
-        fgseaSimple(pathways = pathways, stats = stats,
-                    minSize = minSize, maxSize = maxSize,
-                    gseaParam = gseaParam, ...)
-    } else {
-        fgseaMultilevel(pathways = pathways, stats = stats,
-                        minSize = minSize, maxSize = maxSize,
-                        gseaParam = gseaParam, ...)
-    }
+    # Route to fgseaSimple only if the user *meaningfully* set nperm
+    # (numeric > 0). Passing nperm = NULL falls through to multilevel.
+    use_simple <- "nperm" %in% names(args) &&
+                  !is.null(args$nperm) &&
+                  is.numeric(args$nperm) &&
+                  args$nperm > 0
+    fun <- if (use_simple) fgseaSimple else fgseaMultilevel
+    fun(pathways = pathways, stats = stats,
+        minSize = minSize, maxSize = maxSize,
+        gseaParam = gseaParam, ...)
 }
 
 #' Simple permutation-null GSEA on CPU/GPU

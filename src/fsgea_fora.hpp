@@ -61,40 +61,47 @@ inline double logChoose(std::int64_t n, std::int64_t k) {
 
 // log P(X = q) under Hypergeometric(N, m, k).
 inline double logHyperPmf(std::int64_t q, std::int64_t N,
-                          std::int64_t m, std::int64_t k)
+                          std::int64_t m, std::int64_t k) noexcept
 {
     return logChoose(m, q) + logChoose(N - m, k - q) - logChoose(N, k);
 }
 
-// P(X >= q) summed in log-space. Stable for q far in the tail.
-inline double upperTail(std::int64_t q, std::int64_t N,
-                        std::int64_t m, std::int64_t k)
+// P(X >= q) and P(X = q) together. Single-pass streaming log-sum-exp:
+// maintain a running max of the log-PMFs seen so far and rescale the
+// accumulator whenever a larger value appears. No heap allocation per call.
+struct TailAndPmf { double tail; double pmfAtQ; };
+
+inline TailAndPmf upperTailAndPmf(std::int64_t q, std::int64_t N,
+                                  std::int64_t m, std::int64_t k) noexcept
 {
     auto const qMin = std::max<std::int64_t>(0, k - (N - m));
     auto const qMax = std::min(m, k);
-    if (q <= qMin) return 1.0;
-    if (q >  qMax) return 0.0;
+    if (q <= qMin) return {1.0, std::exp(logHyperPmf(qMin, N, m, k))};
+    if (q >  qMax) return {0.0, 0.0};
 
-    // Sum exp(logPmf(i)) for i = q..qMax, log-sum-exp style with a running
-    // max for numerical stability.
-    std::vector<double> logs;
-    logs.reserve(static_cast<std::size_t>(qMax - q + 1));
     double maxLog = -std::numeric_limits<double>::infinity();
-    for (std::int64_t i = q; i <= qMax; ++i) {
-        double lp = logHyperPmf(i, N, m, k);
-        logs.push_back(lp);
-        if (lp > maxLog) maxLog = lp;
-    }
-    if (!std::isfinite(maxLog)) return 0.0;
+    double acc    = 0.0;
+    double logPmfQ = -std::numeric_limits<double>::infinity();
 
-    double acc = 0.0;
-    for (double lp : logs) acc += std::exp(lp - maxLog);
-    return std::min(1.0, std::exp(maxLog) * acc);
+    for (std::int64_t i = q; i <= qMax; ++i) {
+        double const lp = logHyperPmf(i, N, m, k);
+        if (i == q) logPmfQ = lp;
+        if (!std::isfinite(lp)) continue;
+        if (lp > maxLog) {
+            acc *= std::exp(maxLog - lp);   // rescale running sum
+            maxLog = lp;
+        }
+        acc += std::exp(lp - maxLog);
+    }
+    double const tail   = std::isfinite(maxLog)
+                        ? std::min(1.0, std::exp(maxLog) * acc) : 0.0;
+    double const pmfAtQ = std::isfinite(logPmfQ) ? std::exp(logPmfQ) : 0.0;
+    return {tail, pmfAtQ};
 }
 
 } // namespace detail
 
-inline std::vector<Result> run(Input const& in) {
+[[nodiscard]] inline std::vector<Result> run(Input const& in) {
     if (in.universeSize <= 0) {
         throw std::invalid_argument("fora: universeSize must be positive");
     }
@@ -117,14 +124,11 @@ inline std::vector<Result> run(Input const& in) {
     std::for_each(std::execution::par_unseq, outIdx.begin(), outIdx.end(),
         [&](std::size_t i) {
             std::size_t const pIdx = kept[i];
-            auto const& members = in.pathwayMembers[pIdx];
+            auto const& members = in.pathwayMembers[pIdx]; // already sorted
 
-            // Intersect sorted query with sorted pathway members.
-            auto pathwaySorted = members;
-            std::ranges::sort(pathwaySorted);
             std::vector<std::int32_t> overlap;
-            overlap.reserve(std::min(pathwaySorted.size(), queryOrder.size()));
-            std::ranges::set_intersection(pathwaySorted, queryOrder,
+            overlap.reserve(std::min(members.size(), queryOrder.size()));
+            std::ranges::set_intersection(members, queryOrder,
                                           std::back_inserter(overlap));
 
             std::int64_t const q = static_cast<std::int64_t>(overlap.size());
@@ -132,14 +136,10 @@ inline std::vector<Result> run(Input const& in) {
             std::int64_t const N = in.universeSize;
             std::int64_t const k = in.querySize;
 
-            double const pval    = detail::upperTail(q, N, m, k);
-            double const pmfAtQ  = std::isfinite(detail::logHyperPmf(q, N, m, k))
-                ? std::exp(detail::logHyperPmf(q, N, m, k)) : 0.0;
-            double const midP    = std::clamp(pval - 0.5 * pmfAtQ, 0.0, 1.0);
-
-            double const expected =
-                static_cast<double>(k) * static_cast<double>(m)
-                / static_cast<double>(N);
+            auto const [pval, pmfAtQ] = detail::upperTailAndPmf(q, N, m, k);
+            double const midP     = std::clamp(pval - 0.5 * pmfAtQ, 0.0, 1.0);
+            double const expected = static_cast<double>(k * m)
+                                  / static_cast<double>(N);
             double const fold = expected > 0
                 ? static_cast<double>(q) / expected
                 : std::numeric_limits<double>::infinity();

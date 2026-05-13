@@ -132,21 +132,20 @@ List fsgea_multilevel_cpp(
     int min_size,
     int max_size)
 {
-    std::vector<double> s(stats.begin(), stats.end());
-    auto scoreType = fsgea::parseScoreType(score_type);
-
-    // Filter pathways by size.
+    std::vector<double> const s(stats.begin(), stats.end());
+    auto const scoreType = fsgea::parseScoreType(score_type);
     auto const n = static_cast<std::int64_t>(s.size());
-    std::vector<std::size_t> kept;
+
     std::vector<std::vector<std::int32_t>> positions;
     std::vector<std::string>               names;
+    positions.reserve(static_cast<std::size_t>(pathway_names.size()));
+    names.reserve(static_cast<std::size_t>(pathway_names.size()));
     for (R_xlen_t i = 0; i < pathway_names.size(); ++i) {
         IntegerVector p = pathways_zero_based[i];
-        auto sz = static_cast<std::int64_t>(p.size());
+        auto const sz = static_cast<std::int64_t>(p.size());
         if (sz < min_size || sz > max_size || sz <= 0 || sz >= n) continue;
         positions.emplace_back(p.begin(), p.end());
         names.emplace_back(Rcpp::as<std::string>(pathway_names[i]));
-        kept.push_back(static_cast<std::size_t>(i));
     }
 
     fsgea::multilevel::Config cfg{

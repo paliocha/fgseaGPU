@@ -53,7 +53,9 @@ inline std::uint64_t splitmix(std::uint64_t x) {
 
 [[nodiscard]] inline std::vector<PathwayResult> runFgsea(FgseaInput const& in) {
     auto const n = static_cast<std::int64_t>(in.stats.size());
-    if (n < 2) throw std::invalid_argument("stats must contain at least two entries");
+    if (n < 2)        throw std::invalid_argument("stats must contain at least two entries");
+    if (in.nperm < 1) throw std::invalid_argument("nperm must be >= 1");
+    if (in.gseaParam < 0.0) throw std::invalid_argument("gseaParam must be >= 0");
 
     // Filter pathways to size range.
     std::vector<std::size_t> keep;

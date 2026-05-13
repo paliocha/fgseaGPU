@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <execution>
 #include <numeric>
+#include <optional>
 #include <random>
 #include <ranges>
 #include <span>
@@ -34,30 +35,32 @@ namespace fsgea {
 
 enum class ScoreType : std::uint8_t { Std, Pos, Neg };
 
-constexpr ScoreType parseScoreType(std::string_view s) {
+[[nodiscard]] constexpr ScoreType parseScoreType(std::string_view s) {
     if (s == "std") return ScoreType::Std;
     if (s == "pos") return ScoreType::Pos;
     if (s == "neg") return ScoreType::Neg;
     throw std::invalid_argument("scoreType must be one of \"std\", \"pos\", \"neg\"");
 }
 
-// Per-pathway result of a single ES evaluation.
+// Per-pathway result of a single ES evaluation. `leadingEdgeEnd` is the index
+// (into the input `positions` argument) at which the running sum reached its
+// best value, or std::nullopt if no non-trivial extremum exists (degenerate
+// gene set: k == 0, k >= n, or all member statistics zero).
 struct EsResult {
-    double es{};         // signed enrichment score
-    std::int32_t leadingEdgeEnd{-1}; // index into the *sorted-by-rank* position
-                                     // vector at which |running sum| was maximal
+    double                       es{};
+    std::optional<std::int32_t>  leadingEdgeEnd{};
 };
 
 // Compute the (signed) enrichment score for a single gene set against a fixed
-// ranked vector. `positions` must be sorted ascending and zero-based. The
-// algorithm is the literal definition above and runs in O(k).
+// ranked vector. `positions` must be sorted ascending and zero-based. Runs in
+// O(k) — the cost of one walk over the set members.
 template <std::ranges::random_access_range Stats,
           std::ranges::random_access_range Positions>
 [[nodiscard]] constexpr EsResult calcEs(
     Stats const& stats,
     Positions const& positions,
     double gseaParam,
-    ScoreType scoreType) noexcept(false)
+    ScoreType scoreType)
 {
     auto const n = static_cast<std::int64_t>(std::ranges::size(stats));
     auto const k = static_cast<std::int64_t>(std::ranges::size(positions));
@@ -71,30 +74,32 @@ template <std::ranges::random_access_range Stats,
     if (nr <= 0.0) return {};
 
     double const negStep = 1.0 / static_cast<double>(n - k);
-    double cur = 0.0;
-    double best = 0.0;
-    std::int32_t bestIdx = -1;
-    std::int64_t prev = -1;
-    std::int32_t i = 0;
+    double       cur     = 0.0;
+    double       best    = 0.0;
+    std::optional<std::int32_t> bestIdx{};
+    std::int64_t prev    = -1;
+    std::int32_t i       = 0;
 
-    for (auto pos : positions) {
-        // negative drift accumulated between previous and current set member
-        cur -= negStep * static_cast<double>(pos - prev - 1);
-        // member contribution
-        double const w = std::pow(std::abs(static_cast<double>(stats[pos])), gseaParam) / nr;
-        cur += w;
-
+    auto track = [&](double signedCur) {
         switch (scoreType) {
             case ScoreType::Std:
-                if (std::abs(cur) > std::abs(best)) { best = cur; bestIdx = i; }
+                if (std::abs(signedCur) > std::abs(best)) {
+                    best = signedCur; bestIdx = i;
+                }
                 break;
             case ScoreType::Pos:
-                if (cur > best) { best = cur; bestIdx = i; }
+                if (signedCur > best) { best = signedCur; bestIdx = i; }
                 break;
             case ScoreType::Neg:
-                if (cur < best) { best = cur; bestIdx = i; }
+                if (signedCur < best) { best = signedCur; bestIdx = i; }
                 break;
         }
+    };
+
+    for (auto pos : positions) {
+        cur -= negStep * static_cast<double>(pos - prev - 1);
+        cur += std::pow(std::abs(static_cast<double>(stats[pos])), gseaParam) / nr;
+        track(cur);
         prev = pos;
         ++i;
     }
@@ -159,24 +164,21 @@ struct PermSummary { double pval; double nes; std::int64_t nMoreExtreme; };
 }
 
 // Draw k distinct integers from [0, n) into out[0..k). Floyd's algorithm —
-// O(k) and stable across reproducible seeds.
-template <class Rng>
-inline void sampleWithoutReplacement(std::int64_t n, std::int64_t k,
-                                     std::span<std::int32_t> out, Rng& rng)
+// O(k) expected, no per-call allocation beyond the O(n) bitmap. Result is
+// sorted ascending so callers can use it directly with calcEs.
+inline void sampleWithoutReplacement(std::int64_t n,
+                                     std::int64_t k,
+                                     std::span<std::int32_t> out,
+                                     std::mt19937_64& rng)
 {
-    // Floyd's combinatorial sampling. Avoids allocating an O(n) table.
-    std::vector<char> used(static_cast<std::size_t>(n), 0); // bitmap-equivalent
+    std::vector<char> used(static_cast<std::size_t>(n), 0);
     std::int64_t i = 0;
     for (std::int64_t j = n - k; j < n; ++j) {
         std::uniform_int_distribution<std::int64_t> dist(0, j);
-        std::int64_t t = dist(rng);
-        if (used[static_cast<std::size_t>(t)]) {
-            out[i++] = static_cast<std::int32_t>(j);
-            used[static_cast<std::size_t>(j)] = 1;
-        } else {
-            out[i++] = static_cast<std::int32_t>(t);
-            used[static_cast<std::size_t>(t)] = 1;
-        }
+        std::int64_t const t = dist(rng);
+        std::int64_t const pick = used[static_cast<std::size_t>(t)] ? j : t;
+        out[i++] = static_cast<std::int32_t>(pick);
+        used[static_cast<std::size_t>(pick)] = 1;
     }
     std::ranges::sort(out.subspan(0, static_cast<std::size_t>(k)));
 }

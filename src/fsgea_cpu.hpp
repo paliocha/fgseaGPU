@@ -59,15 +59,15 @@ struct ObservedEs {
 
 inline ObservedEs observedEs(
     std::span<double const> stats,
-    std::span<std::int32_t const> positions, // sorted asc
+    std::span<std::int32_t const> positions, // sorted ascending
     double gseaParam,
     ScoreType scoreType)
 {
-    auto r = calcEs(stats, positions, gseaParam, scoreType);
-    if (r.leadingEdgeEnd < 0) {
-        // Either the gene set is empty/degenerate, or every running-sum
-        // extremum is exactly zero. Both are pathological: the leading edge
-        // is undefined and any downstream interpretation would be misleading.
+    auto const r = calcEs(stats, positions, gseaParam, scoreType);
+    if (!r.leadingEdgeEnd) {
+        // Degenerate gene set or all-zero member statistics: the leading
+        // edge is undefined and any downstream interpretation would be
+        // misleading. Fail loud.
         throw std::domain_error(
             "fsgea: observed enrichment score is zero for this gene set; "
             "the leading edge is undefined. Check that the gene set has "
@@ -75,21 +75,12 @@ inline ObservedEs observedEs(
             "are zero.");
     }
 
-    ObservedEs res{r.es, {}};
-    // Leading-edge subset: members up to and including the extremum, taken
-    // from whichever end matches the sign of ES. For positive ES, that's the
-    // first (leadingEdgeEnd + 1) positions of `positions`. For negative ES,
-    // it's the last (k - leadingEdgeEnd) positions.
-    if (r.es >= 0) {
-        res.leadingEdge.assign(
-            positions.begin(),
-            positions.begin() + r.leadingEdgeEnd + 1);
-    } else {
-        res.leadingEdge.assign(
-            positions.begin() + r.leadingEdgeEnd,
-            positions.end());
-    }
-    return res;
+    auto const tip = *r.leadingEdgeEnd;
+    // For positive ES the leading edge is the prefix up to the extremum; for
+    // negative ES it's the suffix starting at the extremum.
+    auto const begin = r.es >= 0 ? positions.begin() : positions.begin() + tip;
+    auto const end   = r.es >= 0 ? positions.begin() + tip + 1 : positions.end();
+    return {r.es, std::vector<std::int32_t>(begin, end)};
 }
 
 } // namespace fsgea::cpu

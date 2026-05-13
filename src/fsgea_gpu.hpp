@@ -71,22 +71,20 @@ inline torch::Device asTorchDevice(Device d) {
     return torch::Device(torch::kCPU);
 }
 
-// Sample B sets of k distinct positions from [0, n) on `device`. argsort-over-
-// noise is the canonical batched "random k-subset" trick: ranks of uniform
-// noise are a uniform permutation, take the first k. Returns an int64 [B, k]
-// tensor with each row sorted ascending so the cumsum walk is monotonic in
-// position.
+// Sample B sets of k distinct positions from [0, n) on `device`. We take
+// per-row top-k of uniform noise: the indices of the k largest values are a
+// uniform k-subset of [0, n). topk is O(n log k) per row vs O(n log n) for
+// a full argsort — a meaningful win whenever k << n. The result is then
+// sorted within each row so the cumsum walk is monotonic in position.
 inline torch::Tensor sampleBatchedPositions(
     std::int64_t n, std::int64_t k, std::int64_t B,
     torch::Device device, std::int64_t seed)
 {
     auto gen = at::detail::createCPUGenerator(static_cast<std::uint64_t>(seed));
-    auto cpuOpts = torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU);
+    auto const cpuOpts = torch::TensorOptions().dtype(torch::kFloat32);
     auto noise = torch::rand({B, n}, gen, cpuOpts).to(device, /*non_blocking=*/true);
-    // argsort -> per-row uniform permutation; first k columns are the subset.
-    auto perm   = noise.argsort(/*dim=*/1);
-    auto subset = perm.slice(/*dim=*/1, 0, k);
-    return std::get<0>(subset.sort(/*dim=*/1)).to(torch::kInt64);
+    auto idx = std::get<1>(noise.topk(k, /*dim=*/1, /*largest=*/true, /*sorted=*/false));
+    return std::get<0>(idx.sort(/*dim=*/1)).to(torch::kInt64);
 }
 
 // Compute B permutation ES values for a single pathway size k.

@@ -28,18 +28,11 @@ int main(int argc, char** argv) {
     for (auto& s : in.stats) s = nd(rng);
     std::ranges::sort(in.stats, std::ranges::greater());
 
-    in.pathwayNames.reserve(P);
-    in.pathwayPositions.reserve(P);
-    std::uniform_int_distribution<std::int32_t> ud(0, static_cast<std::int32_t>(n - 1));
+    in.pathwayNames.reserve(static_cast<std::size_t>(P));
+    in.pathwayPositions.reserve(static_cast<std::size_t>(P));
     for (std::int64_t p = 0; p < P; ++p) {
-        std::vector<std::int32_t> pos;
-        pos.reserve(k);
-        std::vector<char> used(n, 0);
-        while (static_cast<std::int64_t>(pos.size()) < k) {
-            auto x = ud(rng);
-            if (!used[x]) { used[x] = 1; pos.push_back(x); }
-        }
-        std::ranges::sort(pos);
+        std::vector<std::int32_t> pos(static_cast<std::size_t>(k));
+        fsgea::sampleWithoutReplacement(n, k, std::span<std::int32_t>(pos), rng);
         in.pathwayPositions.emplace_back(std::move(pos));
         in.pathwayNames.push_back("pw_" + std::to_string(p));
     }

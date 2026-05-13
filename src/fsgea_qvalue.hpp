@@ -56,30 +56,33 @@ inline std::vector<double> defaultLambdaGrid() {
     return g; // 0.05, 0.10, ..., 0.95
 }
 
-// pi_0(lambda) = (# p > lambda) / (m * (1 - lambda)), clamped to (0, 1].
-inline double pi0AtLambda(std::vector<double> const& pvals, double lambda) {
-    auto const m = static_cast<double>(pvals.size());
+// pi_0(lambda) computed from a *sorted-ascending* p-value vector via bisect.
+inline double pi0FromSorted(std::vector<double> const& sortedP, double lambda) {
+    auto const m = static_cast<double>(sortedP.size());
     if (m <= 0.0 || lambda >= 1.0) return 1.0;
-    std::int64_t above = 0;
-    for (double p : pvals) if (p > lambda) ++above;
-    double const est = static_cast<double>(above) / (m * (1.0 - lambda));
-    return std::clamp(est, 0.0, 1.0);
+    auto const it = std::ranges::upper_bound(sortedP, lambda);
+    auto const above = static_cast<double>(std::distance(it, sortedP.end()));
+    return std::clamp(above / (m * (1.0 - lambda)), 0.0, 1.0);
 }
 
-// Bootstrap lambda selection per Storey (2002).
+// Bootstrap lambda selection per Storey (2002). The outer cost is dominated
+// by re-sorting each bootstrap sample (O(m log m)) — bisecting against the
+// lambda grid is then O(L log m) per replicate, well under the sort.
 inline double pi0Bootstrap(std::vector<double> const& pvals,
                            std::vector<double> const& lambdas,
                            std::int64_t B,
                            std::uint64_t seed)
 {
+    auto sortedP = pvals;
+    std::ranges::sort(sortedP);
+
     auto const L = lambdas.size();
     std::vector<double> pi0L(L);
     for (std::size_t i = 0; i < L; ++i)
-        pi0L[i] = pi0AtLambda(pvals, lambdas[i]);
+        pi0L[i] = pi0FromSorted(sortedP, lambdas[i]);
 
     double const pi0Min = *std::ranges::min_element(pi0L);
 
-    // Accumulate mean squared error of bootstrap pi_0 against pi0Min.
     std::vector<double> mse(L, 0.0);
     std::mt19937_64 rng(seed);
     auto const m = pvals.size();
@@ -88,21 +91,22 @@ inline double pi0Bootstrap(std::vector<double> const& pvals,
 
     for (std::int64_t b = 0; b < B; ++b) {
         for (std::size_t i = 0; i < m; ++i) sample[i] = pvals[pick(rng)];
+        std::ranges::sort(sample);
         for (std::size_t i = 0; i < L; ++i) {
-            double const piB = pi0AtLambda(sample, lambdas[i]);
-            double const e = piB - pi0Min;
+            double const e = pi0FromSorted(sample, lambdas[i]) - pi0Min;
             mse[i] += e * e;
         }
     }
-    auto best = std::distance(mse.begin(), std::ranges::min_element(mse));
-    return std::clamp(pi0L[static_cast<std::size_t>(best)], 0.0, 1.0);
+    auto const best = static_cast<std::size_t>(
+        std::distance(mse.begin(), std::ranges::min_element(mse)));
+    return std::clamp(pi0L[best], 0.0, 1.0);
 }
 
 } // namespace detail
 
 // Storey-Tibshirani q-values from a vector of p-values.
-inline Result storey(std::vector<double> const& pvals,
-                     StoreyOptions opts = {})
+[[nodiscard]] inline Result storey(std::vector<double> const& pvals,
+                                   StoreyOptions opts = {})
 {
     if (pvals.empty()) return {1.0, {}};
     for (double p : pvals) {
@@ -118,10 +122,12 @@ inline Result storey(std::vector<double> const& pvals,
         pi0 = detail::pi0Bootstrap(pvals, opts.lambdaGrid,
                                    opts.bootstrap, opts.seed);
     } else {
-        // Robust fallback: minimum over the lambda grid.
+        // Robust fallback: minimum over the lambda grid (cheap for tiny m).
+        auto sortedP = pvals;
+        std::ranges::sort(sortedP);
         double best = 1.0;
         for (double lam : opts.lambdaGrid) {
-            best = std::min(best, detail::pi0AtLambda(pvals, lam));
+            best = std::min(best, detail::pi0FromSorted(sortedP, lam));
         }
         pi0 = best;
     }
@@ -148,14 +154,14 @@ inline Result storey(std::vector<double> const& pvals,
 }
 
 // Convenience: just the q-values, with default options.
-inline std::vector<double> qvalues(std::vector<double> const& pvals) {
+[[nodiscard]] inline std::vector<double> qvalues(std::vector<double> const& pvals) {
     return storey(pvals).qvalues;
 }
 
 // Mid-p adjustment: for each test i, midP[i] = pvals[i] - 0.5 * pmfAtObs[i].
 // `pmfAtObs[i]` is the null probability mass at the observed count.
-inline std::vector<double> midP(std::vector<double> const& pvals,
-                                std::vector<double> const& pmfAtObs)
+[[nodiscard]] inline std::vector<double> midP(std::vector<double> const& pvals,
+                                              std::vector<double> const& pmfAtObs)
 {
     if (pvals.size() != pmfAtObs.size()) {
         throw std::invalid_argument("midP: size mismatch");
