@@ -1,4 +1,4 @@
-// fsgea_dispatch.h — orchestrates CPU vs GPU execution.
+// fgsea_dispatch.h — orchestrates CPU vs GPU execution.
 //
 // The dispatcher owns the policy decisions: which device to land on, how to
 // split the permutation batch under a memory budget, how to collate per-
@@ -7,17 +7,17 @@
 
 #pragma once
 
-#include "fsgea_core.h"
-#include "fsgea_cpu.h"
-#include "fsgea_gpu.h"
-#include "fsgea_qvalue.h"
+#include "fgsea_core.h"
+#include "fgsea_cpu.h"
+#include "fgsea_gpu.h"
+#include "fgsea_qvalue.h"
 
 #include <map>
 #include <string>
 #include <string_view>
 #include <vector>
 
-namespace fsgea {
+namespace fgsea {
 
 struct FgseaInput {
     std::vector<double>                       stats;           // length n, decreasing
@@ -68,7 +68,7 @@ inline std::int64_t chunkBatchSize(std::int64_t n, std::int64_t bytesBudget) {
     std::vector<PathwayResult> results(keep.size());
 
     [[maybe_unused]] auto const device = gpu::resolveDevice(in.deviceHint);
-#ifdef FSGEA_WITH_TORCH
+#ifdef FGSEA_WITH_TORCH
     bool const useGpu = (device != gpu::Device::CPU);
     std::optional<torch::Tensor> statsTensor;
     if (useGpu) {
@@ -123,14 +123,14 @@ inline std::int64_t chunkBatchSize(std::int64_t n, std::int64_t bytesBudget) {
         std::vector<double> shared_null;
         shared_null.reserve(static_cast<std::size_t>(in.nperm));
 
-#ifdef FSGEA_WITH_TORCH
+#ifdef FGSEA_WITH_TORCH
         if (useGpu) {
             auto const chunk = detail::chunkBatchSize(n, in.gpuMemoryBudgetBytes);
             std::int64_t done = 0;
             while (done < in.nperm) {
                 auto const B = std::min<std::int64_t>(chunk, in.nperm - done);
                 std::int64_t chunkSeed = static_cast<std::int64_t>(
-                    fsgea::splitmix(static_cast<std::uint64_t>(in.seed) ^
+                    fgsea::splitmix(static_cast<std::uint64_t>(in.seed) ^
                                      (static_cast<std::uint64_t>(k_u) << 17) ^
                                      static_cast<std::uint64_t>(done)));
                 auto es = gpu::permEsBatchTorch(
@@ -143,7 +143,7 @@ inline std::int64_t chunkBatchSize(std::int64_t n, std::int64_t bytesBudget) {
         } else
 #endif
         {
-            std::uint64_t seed = fsgea::splitmix(
+            std::uint64_t seed = fgsea::splitmix(
                 static_cast<std::uint64_t>(in.seed) ^
                 (static_cast<std::uint64_t>(k_u) << 17));
             shared_null = cpu::permEsBatch(statsSpan, k_u, in.nperm,
@@ -173,7 +173,7 @@ inline std::int64_t chunkBatchSize(std::int64_t n, std::int64_t bytesBudget) {
         std::vector<double> pvals;
         pvals.reserve(results.size());
         for (auto const& r : results) pvals.push_back(r.pval);
-        auto q = fsgea::qvalue::storey(pvals);
+        auto q = fgsea::qvalue::storey(pvals);
         for (std::size_t i = 0; i < results.size(); ++i) {
             results[i].padj    = q.qvalues[i];
             results[i].pi0Used = q.pi0;
@@ -183,4 +183,4 @@ inline std::int64_t chunkBatchSize(std::int64_t n, std::int64_t bytesBudget) {
     return results;
 }
 
-} // namespace fsgea
+} // namespace fgsea

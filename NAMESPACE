@@ -1,5 +1,5 @@
 # Hand-written namespace — keep in sync with man/*.Rd and R/fgsea.R.
-useDynLib(fsgeaGPU)
+useDynLib(fgseaGPU)
 
 importFrom(Rcpp, sourceCpp)
 importFrom(data.table, data.table, setorder, setattr)
@@ -12,5 +12,5 @@ export(fgseaMultilevel)
 export(fgseaPhenotype)
 export(fora)
 export(calcGseaStat)
-export(fsgeaDevice)
-export(fsgeaBackendInfo)
+export(fgseaDevice)
+export(fgseaBackendInfo)

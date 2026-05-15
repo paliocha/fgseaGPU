@@ -8,17 +8,17 @@
 #
 # Honoured environment variables:
 #
-#   FSGEA_PRECISE       1 (default) → compile with Neumaier-compensated
+#   FGSEA_PRECISE       1 (default) → compile with Neumaier-compensated
 #                       summation in calcEs's running-sum walk; set to 0
 #                       to opt out and pay only a plain `+=` per step.
 #
-#   FSGEA_TORCH         1 → build the optional LibTorch backend. Requires
-#                       FSGEA_TORCH_HOME to point at an unpacked LibTorch
+#   FGSEA_TORCH         1 → build the optional LibTorch backend. Requires
+#                       FGSEA_TORCH_HOME to point at an unpacked LibTorch
 #                       distribution.
 #
-#   FSGEA_TORCH_HOME    Path to LibTorch (must contain include/ and lib/).
+#   FGSEA_TORCH_HOME    Path to LibTorch (must contain include/ and lib/).
 #
-#   FSGEA_TORCH_CUDA    1 → also link -ltorch_cuda -lc10_cuda.
+#   FGSEA_TORCH_CUDA    1 → also link -ltorch_cuda -lc10_cuda.
 #
 # TBB (and therefore std::execution::par_unseq) is auto-detected via
 # pkg-config on non-Darwin hosts. Apple's libc++ does not ship parallel
@@ -37,7 +37,7 @@ case "${uname_s}" in
         ;;
     *)
         if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists tbb 2>/dev/null; then
-            TBB_CPPFLAGS="$(pkg-config --cflags tbb) -DFSGEA_PARALLEL"
+            TBB_CPPFLAGS="$(pkg-config --cflags tbb) -DFGSEA_PARALLEL"
             TBB_LIBS="$(pkg-config --libs tbb)"
         fi
         ;;
@@ -45,23 +45,23 @@ esac
 
 # Default: compensated accumulation on. Costs two extra fp adds per
 # member in the running-sum walk; pays off whenever ES values cluster
-# near zero or pathway sizes are pathological. Set FSGEA_PRECISE=0 in
+# near zero or pathway sizes are pathological. Set FGSEA_PRECISE=0 in
 # the environment to opt out.
-PRECISE_CPPFLAGS="-DFSGEA_PRECISE_ACCUM"
-if [ "x${FSGEA_PRECISE}" = "x0" ]; then
+PRECISE_CPPFLAGS="-DFGSEA_PRECISE_ACCUM"
+if [ "x${FGSEA_PRECISE}" = "x0" ]; then
     PRECISE_CPPFLAGS=""
 fi
 
 TORCH_CPPFLAGS=""
 TORCH_LIBS=""
-if [ "x${FSGEA_TORCH}" = "x1" ]; then
-    if [ -z "${FSGEA_TORCH_HOME}" ]; then
-        echo "configure: FSGEA_TORCH=1 requires FSGEA_TORCH_HOME to point at a LibTorch install" >&2
+if [ "x${FGSEA_TORCH}" = "x1" ]; then
+    if [ -z "${FGSEA_TORCH_HOME}" ]; then
+        echo "configure: FGSEA_TORCH=1 requires FGSEA_TORCH_HOME to point at a LibTorch install" >&2
         exit 1
     fi
-    TORCH_CPPFLAGS="-DFSGEA_WITH_TORCH -I${FSGEA_TORCH_HOME}/include -I${FSGEA_TORCH_HOME}/include/torch/csrc/api/include"
-    TORCH_LIBS="-L${FSGEA_TORCH_HOME}/lib -Wl,-rpath,${FSGEA_TORCH_HOME}/lib -ltorch -ltorch_cpu -lc10"
-    if [ "x${FSGEA_TORCH_CUDA}" = "x1" ]; then
+    TORCH_CPPFLAGS="-DFGSEA_WITH_TORCH -I${FGSEA_TORCH_HOME}/include -I${FGSEA_TORCH_HOME}/include/torch/csrc/api/include"
+    TORCH_LIBS="-L${FGSEA_TORCH_HOME}/lib -Wl,-rpath,${FGSEA_TORCH_HOME}/lib -ltorch -ltorch_cpu -lc10"
+    if [ "x${FGSEA_TORCH_CUDA}" = "x1" ]; then
         TORCH_LIBS="${TORCH_LIBS} -ltorch_cuda -lc10_cuda"
     fi
 fi
@@ -79,4 +79,4 @@ sed \
 echo "configure: wrote src/Makevars"
 echo "configure:   TBB        ${TBB_CPPFLAGS:-disabled}"
 echo "configure:   Torch      ${TORCH_CPPFLAGS:-disabled}"
-echo "configure:   Precise    ${PRECISE_CPPFLAGS:-disabled (FSGEA_PRECISE=0)}"
+echo "configure:   Precise    ${PRECISE_CPPFLAGS:-disabled (FGSEA_PRECISE=0)}"

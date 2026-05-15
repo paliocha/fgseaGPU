@@ -1,25 +1,25 @@
-// rcpp_glue.cpp — converts R types to fsgea::FgseaInput, runs the dispatcher,
+// rcpp_glue.cpp — converts R types to fgsea::FgseaInput, runs the dispatcher,
 // returns a list-of-vectors that R wraps into a data.table.
 
 #include <Rcpp.h>
-#include "fsgea_dispatch.h"
-#include "fsgea_multilevel.h"
-#include "fsgea_fora.h"
-#include "fsgea_phenotype.h"
-#include "fsgea_qvalue.h"
+#include "fgsea_dispatch.h"
+#include "fgsea_multilevel.h"
+#include "fgsea_fora.h"
+#include "fgsea_phenotype.h"
+#include "fgsea_qvalue.h"
 
 using namespace Rcpp;
 
 namespace {
 
-fsgea::ScoreType parseScore(std::string const& s) {
-    return fsgea::parseScoreType(s);
+fgsea::ScoreType parseScore(std::string const& s) {
+    return fgsea::parseScoreType(s);
 }
 
 } // namespace
 
 // [[Rcpp::export]]
-List fsgea_run_cpp(
+List fgsea_run_cpp(
     NumericVector stats,                  // already sorted decreasing on R side
     List pathways_zero_based,             // each an IntegerVector of zero-based sorted positions
     CharacterVector pathway_names,
@@ -32,7 +32,7 @@ List fsgea_run_cpp(
     std::string device,
     double gpu_memory_gib)
 {
-    fsgea::FgseaInput in;
+    fgsea::FgseaInput in;
     in.stats.assign(stats.begin(), stats.end());
 
     in.pathwayNames.reserve(pathway_names.size());
@@ -56,11 +56,11 @@ List fsgea_run_cpp(
     in.deviceHint = device;
     in.gpuMemoryBudgetBytes = static_cast<std::int64_t>(gpu_memory_gib * (1ULL << 30));
 
-    std::vector<fsgea::PathwayResult> res;
+    std::vector<fgsea::PathwayResult> res;
     try {
-        res = fsgea::runFgsea(in);
+        res = fgsea::runFgsea(in);
     } catch (std::exception const& e) {
-        Rcpp::stop(std::string("fsgea: ") + e.what());
+        Rcpp::stop(std::string("fgsea: ") + e.what());
     }
 
     auto const P = static_cast<R_xlen_t>(res.size());
@@ -99,7 +99,7 @@ List fsgea_run_cpp(
 }
 
 // [[Rcpp::export]]
-double fsgea_calc_gsea_stat_cpp(
+double fgsea_calc_gsea_stat_cpp(
     NumericVector stats,
     IntegerVector positions_one_based,
     double gsea_param,
@@ -112,15 +112,15 @@ double fsgea_calc_gsea_stat_cpp(
         p.push_back(positions_one_based[i] - 1); // to zero-based
     std::ranges::sort(p);
 
-    auto r = fsgea::calcEs(std::span<double const>(s),
+    auto r = fgsea::calcEs(std::span<double const>(s),
                            std::span<std::int32_t const>(p),
                            gsea_param,
-                           fsgea::parseScoreType(score_type));
+                           fgsea::parseScoreType(score_type));
     return r.es;
 }
 
 // [[Rcpp::export]]
-List fsgea_multilevel_cpp(
+List fgsea_multilevel_cpp(
     NumericVector stats,
     List pathways_zero_based,
     CharacterVector pathway_names,
@@ -134,7 +134,7 @@ List fsgea_multilevel_cpp(
     int max_size)
 {
     std::vector<double> const s(stats.begin(), stats.end());
-    auto const scoreType = fsgea::parseScoreType(score_type);
+    auto const scoreType = fgsea::parseScoreType(score_type);
     auto const n = static_cast<std::int64_t>(s.size());
 
     std::vector<std::vector<std::int32_t>> positions;
@@ -149,20 +149,20 @@ List fsgea_multilevel_cpp(
         names.emplace_back(Rcpp::as<std::string>(pathway_names[i]));
     }
 
-    fsgea::multilevel::Config cfg{
+    fgsea::multilevel::Config cfg{
         .sampleSize = sample_size,
         .eps        = eps,
         .moveScale  = move_scale,
         .seed       = seed
     };
 
-    std::vector<fsgea::multilevel::PathwayMlResult> ml;
+    std::vector<fgsea::multilevel::PathwayMlResult> ml;
     try {
-        ml = fsgea::multilevel::runMultilevel(
+        ml = fgsea::multilevel::runMultilevel(
             std::span<double const>(s), positions,
             gsea_param, scoreType, cfg);
     } catch (std::exception const& e) {
-        Rcpp::stop(std::string("fsgea multilevel: ") + e.what());
+        Rcpp::stop(std::string("fgsea multilevel: ") + e.what());
     }
 
     // Build leading edges on the side, with the zero-ES error surfaced.
@@ -188,7 +188,7 @@ List fsgea_multilevel_cpp(
 
         // Leading edge via the same path as the simple branch.
         try {
-            auto obs = fsgea::cpu::observedEs(
+            auto obs = fgsea::cpu::observedEs(
                 std::span<double const>(s),
                 std::span<std::int32_t const>(positions[static_cast<std::size_t>(i)]),
                 gsea_param, scoreType);
@@ -197,7 +197,7 @@ List fsgea_multilevel_cpp(
                 v[j] = obs.leadingEdge[j] + 1;
             leadingEdge[i] = v;
         } catch (std::domain_error const& e) {
-            Rcpp::stop(std::string("fsgea multilevel: ") + e.what());
+            Rcpp::stop(std::string("fgsea multilevel: ") + e.what());
         }
     }
 
@@ -207,7 +207,7 @@ List fsgea_multilevel_cpp(
         std::vector<double> ps;
         ps.reserve(static_cast<std::size_t>(P));
         for (R_xlen_t i = 0; i < P; ++i) ps.push_back(pval[i]);
-        auto q = fsgea::qvalue::storey(ps);
+        auto q = fgsea::qvalue::storey(ps);
         pi0Used = q.pi0;
         for (R_xlen_t i = 0; i < P; ++i)
             padj[i] = q.qvalues[static_cast<std::size_t>(i)];
@@ -227,7 +227,7 @@ List fsgea_multilevel_cpp(
 }
 
 // [[Rcpp::export]]
-List fsgea_fora_cpp(
+List fgsea_fora_cpp(
     int universe_size,
     int query_size,
     IntegerVector query_zero_based,
@@ -236,7 +236,7 @@ List fsgea_fora_cpp(
     int min_size,
     int max_size)
 {
-    fsgea::fora::Input in;
+    fgsea::fora::Input in;
     in.universeSize = universe_size;
     in.querySize    = query_size;
     in.queryMembers.assign(query_zero_based.begin(), query_zero_based.end());
@@ -250,11 +250,11 @@ List fsgea_fora_cpp(
     in.minSize = min_size;
     in.maxSize = max_size;
 
-    std::vector<fsgea::fora::Result> res;
+    std::vector<fgsea::fora::Result> res;
     try {
-        res = fsgea::fora::run(in);
+        res = fgsea::fora::run(in);
     } catch (std::exception const& e) {
-        Rcpp::stop(std::string("fsgea fora: ") + e.what());
+        Rcpp::stop(std::string("fgsea fora: ") + e.what());
     }
 
     auto const P = static_cast<R_xlen_t>(res.size());
@@ -291,7 +291,7 @@ List fsgea_fora_cpp(
 }
 
 // [[Rcpp::export]]
-List fsgea_phenotype_cpp(
+List fgsea_phenotype_cpp(
     NumericVector exprs_row_major,     // length = n_genes * n_samples
     int n_genes,
     int n_samples,
@@ -307,7 +307,7 @@ List fsgea_phenotype_cpp(
     int seed,
     std::string device)
 {
-    fsgea::phenotype::Input in;
+    fgsea::phenotype::Input in;
     in.n_genes   = n_genes;
     in.n_samples = n_samples;
     in.exprs.assign(exprs_row_major.begin(), exprs_row_major.end());
@@ -324,19 +324,19 @@ List fsgea_phenotype_cpp(
     }
 
     in.nperm      = nperm;
-    in.metric     = fsgea::phenotype::parseMetric(metric);
+    in.metric     = fgsea::phenotype::parseMetric(metric);
     in.gseaParam  = gsea_param;
-    in.scoreType  = fsgea::parseScoreType(score_type);
+    in.scoreType  = fgsea::parseScoreType(score_type);
     in.minSize    = min_size;
     in.maxSize    = max_size;
     in.seed       = seed;
     in.deviceHint = device;
 
-    std::vector<fsgea::PathwayResult> res;
+    std::vector<fgsea::PathwayResult> res;
     try {
-        res = fsgea::phenotype::runPhenotype(in);
+        res = fgsea::phenotype::runPhenotype(in);
     } catch (std::exception const& e) {
-        Rcpp::stop(std::string("fsgea phenotype: ") + e.what());
+        Rcpp::stop(std::string("fgsea phenotype: ") + e.what());
     }
 
     auto const P = static_cast<R_xlen_t>(res.size());
@@ -373,11 +373,11 @@ List fsgea_phenotype_cpp(
 }
 
 // [[Rcpp::export]]
-List fsgea_backend_info_cpp() {
-    auto const dev = fsgea::gpu::resolveDevice("auto");
-    bool torch_built = fsgea::gpu::torchAvailable();
+List fgsea_backend_info_cpp() {
+    auto const dev = fgsea::gpu::resolveDevice("auto");
+    bool torch_built = fgsea::gpu::torchAvailable();
     return List::create(
         _["torch_built"]  = torch_built,
-        _["device"]       = std::string(fsgea::gpu::deviceName(dev)),
+        _["device"]       = std::string(fgsea::gpu::deviceName(dev)),
         _["concurrency"]  = static_cast<int>(std::thread::hardware_concurrency()));
 }

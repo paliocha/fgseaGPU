@@ -9,10 +9,10 @@ Rcpp::Rostream<true>&  Rcpp::Rcout  = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr  = Rcpp::Rcpp_cerr_get();
 #endif
 
-// fsgea_run_cpp
-List fsgea_run_cpp(NumericVector, List, CharacterVector, int, double,
+// fgsea_run_cpp
+List fgsea_run_cpp(NumericVector, List, CharacterVector, int, double,
                    std::string, int, int, int, std::string, double);
-RcppExport SEXP _fsgeaGPU_fsgea_run_cpp(
+RcppExport SEXP _fgseaGPU_fgsea_run_cpp(
     SEXP statsSEXP, SEXP pathwaysSEXP, SEXP namesSEXP, SEXP npermSEXP,
     SEXP gseaParamSEXP, SEXP scoreTypeSEXP, SEXP minSizeSEXP,
     SEXP maxSizeSEXP, SEXP seedSEXP, SEXP deviceSEXP, SEXP gpuMemSEXP)
@@ -20,7 +20,7 @@ RcppExport SEXP _fsgeaGPU_fsgea_run_cpp(
     BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    rcpp_result_gen = Rcpp::wrap(fsgea_run_cpp(
+    rcpp_result_gen = Rcpp::wrap(fgsea_run_cpp(
         as<NumericVector>(statsSEXP),
         as<List>(pathwaysSEXP),
         as<CharacterVector>(namesSEXP),
@@ -36,15 +36,15 @@ RcppExport SEXP _fsgeaGPU_fsgea_run_cpp(
     END_RCPP
 }
 
-// fsgea_calc_gsea_stat_cpp
-double fsgea_calc_gsea_stat_cpp(NumericVector, IntegerVector, double, std::string);
-RcppExport SEXP _fsgeaGPU_fsgea_calc_gsea_stat_cpp(
+// fgsea_calc_gsea_stat_cpp
+double fgsea_calc_gsea_stat_cpp(NumericVector, IntegerVector, double, std::string);
+RcppExport SEXP _fgseaGPU_fgsea_calc_gsea_stat_cpp(
     SEXP statsSEXP, SEXP posSEXP, SEXP gseaParamSEXP, SEXP scoreTypeSEXP)
 {
     BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    rcpp_result_gen = Rcpp::wrap(fsgea_calc_gsea_stat_cpp(
+    rcpp_result_gen = Rcpp::wrap(fgsea_calc_gsea_stat_cpp(
         as<NumericVector>(statsSEXP),
         as<IntegerVector>(posSEXP),
         as<double>(gseaParamSEXP),
@@ -53,22 +53,22 @@ RcppExport SEXP _fsgeaGPU_fsgea_calc_gsea_stat_cpp(
     END_RCPP
 }
 
-// fsgea_backend_info_cpp
-List fsgea_backend_info_cpp();
-RcppExport SEXP _fsgeaGPU_fsgea_backend_info_cpp()
+// fgsea_backend_info_cpp
+List fgsea_backend_info_cpp();
+RcppExport SEXP _fgseaGPU_fgsea_backend_info_cpp()
 {
     BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    rcpp_result_gen = Rcpp::wrap(fsgea_backend_info_cpp());
+    rcpp_result_gen = Rcpp::wrap(fgsea_backend_info_cpp());
     return rcpp_result_gen;
     END_RCPP
 }
 
-// fsgea_multilevel_cpp
-List fsgea_multilevel_cpp(NumericVector, List, CharacterVector, double, std::string,
+// fgsea_multilevel_cpp
+List fgsea_multilevel_cpp(NumericVector, List, CharacterVector, double, std::string,
                           int, double, double, int, int, int);
-RcppExport SEXP _fsgeaGPU_fsgea_multilevel_cpp(
+RcppExport SEXP _fgseaGPU_fgsea_multilevel_cpp(
     SEXP statsSEXP, SEXP pathwaysSEXP, SEXP namesSEXP,
     SEXP gseaParamSEXP, SEXP scoreTypeSEXP, SEXP sampleSizeSEXP,
     SEXP epsSEXP, SEXP moveScaleSEXP, SEXP seedSEXP,
@@ -77,7 +77,7 @@ RcppExport SEXP _fsgeaGPU_fsgea_multilevel_cpp(
     BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    rcpp_result_gen = Rcpp::wrap(fsgea_multilevel_cpp(
+    rcpp_result_gen = Rcpp::wrap(fgsea_multilevel_cpp(
         as<NumericVector>(statsSEXP),
         as<List>(pathwaysSEXP),
         as<CharacterVector>(namesSEXP),
@@ -93,16 +93,16 @@ RcppExport SEXP _fsgeaGPU_fsgea_multilevel_cpp(
     END_RCPP
 }
 
-// fsgea_fora_cpp
-List fsgea_fora_cpp(int, int, IntegerVector, List, CharacterVector, int, int);
-RcppExport SEXP _fsgeaGPU_fsgea_fora_cpp(
+// fgsea_fora_cpp
+List fgsea_fora_cpp(int, int, IntegerVector, List, CharacterVector, int, int);
+RcppExport SEXP _fgseaGPU_fgsea_fora_cpp(
     SEXP universeSEXP, SEXP querySizeSEXP, SEXP querySEXP,
     SEXP pathwaysSEXP, SEXP namesSEXP, SEXP minSizeSEXP, SEXP maxSizeSEXP)
 {
     BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    rcpp_result_gen = Rcpp::wrap(fsgea_fora_cpp(
+    rcpp_result_gen = Rcpp::wrap(fgsea_fora_cpp(
         as<int>(universeSEXP),
         as<int>(querySizeSEXP),
         as<IntegerVector>(querySEXP),
@@ -114,11 +114,11 @@ RcppExport SEXP _fsgeaGPU_fsgea_fora_cpp(
     END_RCPP
 }
 
-// fsgea_phenotype_cpp
-List fsgea_phenotype_cpp(NumericVector, int, int, IntegerVector,
+// fgsea_phenotype_cpp
+List fgsea_phenotype_cpp(NumericVector, int, int, IntegerVector,
                          List, CharacterVector, int, std::string,
                          double, std::string, int, int, int, std::string);
-RcppExport SEXP _fsgeaGPU_fsgea_phenotype_cpp(
+RcppExport SEXP _fgseaGPU_fgsea_phenotype_cpp(
     SEXP exprsSEXP, SEXP nGenesSEXP, SEXP nSamplesSEXP, SEXP labelsSEXP,
     SEXP pathwaysSEXP, SEXP namesSEXP, SEXP npermSEXP, SEXP metricSEXP,
     SEXP gseaParamSEXP, SEXP scoreTypeSEXP, SEXP minSizeSEXP,
@@ -127,7 +127,7 @@ RcppExport SEXP _fsgeaGPU_fsgea_phenotype_cpp(
     BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    rcpp_result_gen = Rcpp::wrap(fsgea_phenotype_cpp(
+    rcpp_result_gen = Rcpp::wrap(fgsea_phenotype_cpp(
         as<NumericVector>(exprsSEXP),
         as<int>(nGenesSEXP),
         as<int>(nSamplesSEXP),
@@ -147,16 +147,16 @@ RcppExport SEXP _fsgeaGPU_fsgea_phenotype_cpp(
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_fsgeaGPU_fsgea_run_cpp",            (DL_FUNC) &_fsgeaGPU_fsgea_run_cpp,            11},
-    {"_fsgeaGPU_fsgea_calc_gsea_stat_cpp", (DL_FUNC) &_fsgeaGPU_fsgea_calc_gsea_stat_cpp,  4},
-    {"_fsgeaGPU_fsgea_backend_info_cpp",   (DL_FUNC) &_fsgeaGPU_fsgea_backend_info_cpp,    0},
-    {"_fsgeaGPU_fsgea_multilevel_cpp",     (DL_FUNC) &_fsgeaGPU_fsgea_multilevel_cpp,     11},
-    {"_fsgeaGPU_fsgea_fora_cpp",           (DL_FUNC) &_fsgeaGPU_fsgea_fora_cpp,            7},
-    {"_fsgeaGPU_fsgea_phenotype_cpp",      (DL_FUNC) &_fsgeaGPU_fsgea_phenotype_cpp,      14},
+    {"_fgseaGPU_fgsea_run_cpp",            (DL_FUNC) &_fgseaGPU_fgsea_run_cpp,            11},
+    {"_fgseaGPU_fgsea_calc_gsea_stat_cpp", (DL_FUNC) &_fgseaGPU_fgsea_calc_gsea_stat_cpp,  4},
+    {"_fgseaGPU_fgsea_backend_info_cpp",   (DL_FUNC) &_fgseaGPU_fgsea_backend_info_cpp,    0},
+    {"_fgseaGPU_fgsea_multilevel_cpp",     (DL_FUNC) &_fgseaGPU_fgsea_multilevel_cpp,     11},
+    {"_fgseaGPU_fgsea_fora_cpp",           (DL_FUNC) &_fgseaGPU_fgsea_fora_cpp,            7},
+    {"_fgseaGPU_fgsea_phenotype_cpp",      (DL_FUNC) &_fgseaGPU_fgsea_phenotype_cpp,      14},
     {nullptr, nullptr, 0}
 };
 
-RcppExport void R_init_fsgeaGPU(DllInfo* dll) {
+RcppExport void R_init_fgseaGPU(DllInfo* dll) {
     R_registerRoutines(dll, nullptr, CallEntries, nullptr, nullptr);
     R_useDynamicSymbols(dll, FALSE);
 }

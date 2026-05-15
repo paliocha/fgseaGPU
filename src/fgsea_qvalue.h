@@ -1,4 +1,4 @@
-// fsgea_qvalue.h — Storey-Tibshirani q-values plus a discrete-aware
+// fgsea_qvalue.h — Storey-Tibshirani q-values plus a discrete-aware
 // mid-p variant for tests like the hypergeometric.
 //
 // Continuous q-values:
@@ -32,7 +32,7 @@
 #include <utility>
 #include <vector>
 
-namespace fsgea::qvalue {
+namespace fgsea::qvalue {
 
 struct StoreyOptions {
     std::vector<double> lambdaGrid;    // empty -> default 0.05..0.95 step 0.05
@@ -112,7 +112,7 @@ inline double pi0Bootstrap(std::vector<double> const& pvals,
     for (double p : pvals) {
         if (!(p >= 0.0 && p <= 1.0)) {
             throw std::invalid_argument(
-                "fsgea::qvalue::storey: p-values must lie in [0, 1]");
+                "fgsea::qvalue::storey: p-values must lie in [0, 1]");
         }
     }
     if (opts.lambdaGrid.empty()) opts.lambdaGrid = detail::defaultLambdaGrid();
@@ -179,4 +179,4 @@ inline double pi0Bootstrap(std::vector<double> const& pvals,
     return out;
 }
 
-} // namespace fsgea::qvalue
+} // namespace fgsea::qvalue

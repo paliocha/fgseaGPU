@@ -84,7 +84,7 @@ jobs:
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            -DFSGEA_WITH_TORCH=OFF \
+            -DFGSEA_WITH_TORCH=OFF \
             -DCMAKE_BUILD_TYPE=Release
 
       - name: clang-tidy (advisory)

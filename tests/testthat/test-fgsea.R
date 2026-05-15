@@ -48,8 +48,8 @@ test_that("identical seeds give identical results", {
 })
 
 test_that("GPU and CPU agree on observed ES (deterministic) within float tolerance", {
-  skip_if_not(fsgeaBackendInfo()$torch_built, "Torch backend not built")
-  skip_if(fsgeaBackendInfo()$device == "cpu", "No GPU device available")
+  skip_if_not(fgseaBackendInfo()$torch_built, "Torch backend not built")
+  skip_if(fgseaBackendInfo()$device == "cpu", "No GPU device available")
   ex <- make_example()
   rc <- fgsea(ex$pathways, ex$stats, nperm = 100, seed = 1, device = "cpu")
   rg <- fgsea(ex$pathways, ex$stats, nperm = 100, seed = 1, device = "auto")
@@ -72,7 +72,7 @@ test_that("fgsea matches upstream fgsea::fgseaSimple where available", {
   # ES is deterministic for the same inputs but the running-sum
   # accumulation order isn't bit-identical to upstream, so per-pathway
   # ES can drift by O(epsilon * n) — a few times 1e-8 on n = 300.
-  # Tolerance is therefore loose; turn on FSGEA_PRECISE=1 at build time
+  # Tolerance is therefore loose; turn on FGSEA_PRECISE=1 at build time
   # for bit-exact agreement via Neumaier compensation.
   expect_equal(ours[theirs$pathway, ES], theirs$ES, tolerance = 1e-6)
   expect_lt(max(abs(ours[theirs$pathway, pval] - theirs$pval)), 0.05)

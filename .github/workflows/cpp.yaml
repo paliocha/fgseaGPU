@@ -44,9 +44,9 @@ jobs:
           cmake -S . -B build -G Ninja \
             -DCMAKE_CXX_COMPILER=${{ matrix.compiler.cc }} \
             -DCMAKE_BUILD_TYPE=Release \
-            -DFSGEA_WITH_TORCH=OFF \
-            -DFSGEA_BUILD_BENCH=ON  \
-            -DFSGEA_BUILD_TESTS=ON
+            -DFGSEA_WITH_TORCH=OFF \
+            -DFGSEA_BUILD_BENCH=ON  \
+            -DFGSEA_BUILD_TESTS=ON
 
       - name: Build
         run: cmake --build build --parallel
@@ -55,4 +55,4 @@ jobs:
         run: ctest --test-dir build --output-on-failure --parallel
 
       - name: Smoke-run the bench
-        run: ./build/fsgea_bench 5000 100 50 200 cpu
+        run: ./build/fgsea_bench 5000 100 50 200 cpu

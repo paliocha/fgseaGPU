@@ -1,6 +1,6 @@
-// fsgea_phenotype.h — phenotype-permutation GSEA.
+// fgsea_phenotype.h — phenotype-permutation GSEA.
 //
-// Unlike the preranked pipeline (fsgea_dispatch.h), here the input is a
+// Unlike the preranked pipeline (fgsea_dispatch.h), here the input is a
 // raw expression matrix plus a two-class label vector. Each permutation
 // shuffles the labels, recomputes a per-gene rank metric (signal-to-noise,
 // Welch's t, or a class-mean variant), re-ranks the genes, and walks the
@@ -14,24 +14,24 @@
 //   3. Per-(permutation × pathway) ES walk — same algebra as the preranked
 //      kernel, just with stats varying per row instead of being shared.
 //
-// CPU engine (this file): `fsgea::par` outer-loop over
+// CPU engine (this file): `fgsea::par` outer-loop over
 // permutations; each thread carries a per-gene Welford accumulator pair
 // and an O(G) scratch arena. Reproducible from a single master seed via
 // splitmix-derived per-permutation seeds.
 //
-// GPU engine (fsgea_phenotype_gpu.h, gated by FSGEA_WITH_TORCH): the
+// GPU engine (fgsea_phenotype_gpu.h, gated by FGSEA_WITH_TORCH): the
 // metric stage becomes a `[G, S] @ [B, S]ᵀ → [G, B]` matmul (plus the same
 // shape for `exprs²`), the argsort runs along dim 0, and the ES walk reuses
-// the same scatter/cumsum/amax kernel as `fsgea_gpu.h::permEsBatchTorch`
+// the same scatter/cumsum/amax kernel as `fgsea_gpu.h::permEsBatchTorch`
 // but with stats varying per column.
 
 #pragma once
 
-#include "fsgea_core.h"
-#include "fsgea_cpu.h"
-#include "fsgea_exec.h"
-#include "fsgea_gpu.h"     // for gpu::resolveDevice/torchAvailable
-#include "fsgea_qvalue.h"
+#include "fgsea_core.h"
+#include "fgsea_cpu.h"
+#include "fgsea_exec.h"
+#include "fgsea_gpu.h"     // for gpu::resolveDevice/torchAvailable
+#include "fgsea_qvalue.h"
 
 #include <algorithm>
 #include <cmath>
@@ -46,7 +46,7 @@
 #include <string_view>
 #include <vector>
 
-namespace fsgea::phenotype {
+namespace fgsea::phenotype {
 
 enum class Metric : std::uint8_t {
     SignalToNoise,      // (μ_A − μ_B) / (σ_A + σ_B), with GSEA-style sd floor
@@ -170,7 +170,7 @@ struct PermScratch {
 
 // Score every gene under one label assignment. Linear in S·G; the inner
 // loop is contiguous in memory (exprs is row-major by gene). The outer
-// loop runs through `fsgea::par` so the observed pass parallelises across
+// loop runs through `fgsea::par` so the observed pass parallelises across
 // genes; the permutation null already parallelises across permutations
 // at an outer level, so this is only the cheap one-shot path. Each gene's
 // Welford state is local — no data races.
@@ -182,7 +182,7 @@ inline void scoreAllGenes(
     auto const G = in.n_genes;
     auto const S = in.n_samples;
     auto idx = std::ranges::iota_view<std::int64_t, std::int64_t>(0, G);
-    fsgea::for_each(idx.begin(), idx.end(),
+    fgsea::for_each(idx.begin(), idx.end(),
         [&](std::int64_t g) {
             Welford a, b;
             auto const row = in.exprs.data() + g * S;
@@ -216,15 +216,15 @@ inline void invertOrder(std::span<std::int32_t const> order,
 
 } // namespace detail
 
-} // namespace fsgea::phenotype
+} // namespace fgsea::phenotype
 
 // GPU helpers depend on the Input/Metric types defined above, so include
 // here at file scope rather than inside the namespace block.
-#ifdef FSGEA_WITH_TORCH
-#  include "fsgea_phenotype_gpu.h"
+#ifdef FGSEA_WITH_TORCH
+#  include "fgsea_phenotype_gpu.h"
 #endif
 
-namespace fsgea::phenotype {
+namespace fgsea::phenotype {
 
 [[nodiscard]] inline std::vector<PathwayResult> runPhenotype(Input const& in)
 {
@@ -340,15 +340,15 @@ namespace fsgea::phenotype {
     std::vector<double> perm_es(static_cast<std::size_t>(effectiveNperm * P));
 
     [[maybe_unused]] auto const dev =
-        fsgea::gpu::resolveDevice(in.deviceHint);
+        fgsea::gpu::resolveDevice(in.deviceHint);
 
-#ifdef FSGEA_WITH_TORCH
+#ifdef FGSEA_WITH_TORCH
     // Exact-mode permutation counts are tiny by definition; skip the GPU
     // round-trip and use the CPU path. The GPU path is for large-nperm
     // experiments where the matmul amortises the host→device staging cost.
-    bool const use_gpu = (dev != fsgea::gpu::Device::CPU) && !useExact;
+    bool const use_gpu = (dev != fgsea::gpu::Device::CPU) && !useExact;
     if (use_gpu) {
-        auto const td = fsgea::gpu::asTorchDevice(dev);
+        auto const td = fgsea::gpu::asTorchDevice(dev);
         auto const opts64 = torch::TensorOptions().dtype(torch::kFloat64);
 
         // Stage host tensors once.
@@ -384,9 +384,9 @@ namespace fsgea::phenotype {
         for (std::int64_t done = 0; done < in.nperm; done += CHUNK) {
             std::int64_t const B = std::min<std::int64_t>(CHUNK, in.nperm - done);
             std::int64_t const chunkSeed = static_cast<std::int64_t>(
-                fsgea::splitmix(static_cast<std::uint64_t>(in.seed) ^
+                fgsea::splitmix(static_cast<std::uint64_t>(in.seed) ^
                                  static_cast<std::uint64_t>(done)));
-            auto es = fsgea::phenotype::gpu::runBatch(
+            auto es = fgsea::phenotype::gpu::runBatch(
                 in, exprs_t, labels_t, pathways_t, B, chunkSeed, td);
             // es is [B, P] on device; copy to host into perm_es slice.
             auto es_cpu = es.to(torch::kCPU).contiguous();
@@ -444,14 +444,14 @@ namespace fsgea::phenotype {
 
         std::vector<std::uint64_t> masks;
         masks.reserve(static_cast<std::size_t>(effectiveNperm));
-        for (std::uint64_t bits = (1ULL << kBits) - 1ULL; ; bits = fsgea::gosperNext(bits)) {
+        for (std::uint64_t bits = (1ULL << kBits) - 1ULL; ; bits = fgsea::gosperNext(bits)) {
             masks.push_back(bits);
             if (bits == limit) break;
         }
 
         auto idx = std::ranges::iota_view<std::int64_t, std::int64_t>(
             0, effectiveNperm);
-        fsgea::for_each(idx.begin(), idx.end(),
+        fgsea::for_each(idx.begin(), idx.end(),
             [&](std::int64_t b) {
                 std::uint64_t const m = masks[static_cast<std::size_t>(b)];
                 std::vector<std::int8_t> lp(static_cast<std::size_t>(S));
@@ -466,9 +466,9 @@ namespace fsgea::phenotype {
     } else {
         auto idx = std::ranges::iota_view<std::int64_t, std::int64_t>(
             0, in.nperm);
-        fsgea::for_each(idx.begin(), idx.end(),
+        fgsea::for_each(idx.begin(), idx.end(),
             [&](std::int64_t b) {
-                std::mt19937_64 rng(fsgea::splitmix(
+                std::mt19937_64 rng(fgsea::splitmix(
                     static_cast<std::uint64_t>(in.seed) ^
                     static_cast<std::uint64_t>(b)));
                 std::vector<std::int8_t> lp(in.labels);
@@ -525,7 +525,7 @@ namespace fsgea::phenotype {
         std::vector<double> pvals;
         pvals.reserve(results.size());
         for (auto const& r : results) pvals.push_back(r.pval);
-        auto const q = fsgea::qvalue::storey(pvals);
+        auto const q = fgsea::qvalue::storey(pvals);
         for (std::size_t i = 0; i < results.size(); ++i) {
             results[i].padj    = q.qvalues[i];
             results[i].pi0Used = q.pi0;
@@ -534,4 +534,4 @@ namespace fsgea::phenotype {
     return results;
 }
 
-} // namespace fsgea::phenotype
+} // namespace fgsea::phenotype

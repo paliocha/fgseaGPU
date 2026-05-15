@@ -1,4 +1,4 @@
-Package: fsgeaGPU
+Package: fgseaGPU
 Title: GPU-Accelerated Fast Gene Set Enrichment Analysis
 Version: 0.1.0
 Authors@R: c(
@@ -33,8 +33,8 @@ Suggests:
 LinkingTo: Rcpp
 SystemRequirements: C++20, Intel TBB (libtbb-dev) for parallel std::execution, LibTorch (>= 2.2) for GPU support, CMake (>= 3.20) for standalone builds
 License: MIT + file LICENSE
-URL: https://github.com/paliocha/fsgea-gpu
-BugReports: https://github.com/paliocha/fsgea-gpu/issues
+URL: https://github.com/paliocha/fgseaGPU
+BugReports: https://github.com/paliocha/fgseaGPU/issues
 Encoding: UTF-8
 RoxygenNote: 7.3.3
 Config/testthat/edition: 3

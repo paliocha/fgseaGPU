@@ -1,19 +1,19 @@
-// fsgea_cpu.h — C++23 parallel CPU backend.
+// fgsea_cpu.h — C++23 parallel CPU backend.
 //
-// Uses fsgea::par for the outer permutation loop and operates
+// Uses fgsea::par for the outer permutation loop and operates
 // on flat row-major buffers so the same kernel can be JIT'd to vectorised
 // instructions on x86_64, AArch64, etc.
 
 #pragma once
 
-#include "fsgea_core.h"
-#include "fsgea_exec.h"
+#include "fgsea_core.h"
+#include "fgsea_exec.h"
 
 #include <atomic>
 #include <chrono>
 #include <thread>
 
-namespace fsgea::cpu {
+namespace fgsea::cpu {
 
 // Compute B random permutation enrichment scores for a single pathway size k.
 // `stats` is the ranked statistic vector (length n, decreasing order).
@@ -33,9 +33,9 @@ inline std::vector<double> permEsBatch(
     std::vector<std::int64_t> perms(static_cast<std::size_t>(B));
     std::iota(perms.begin(), perms.end(), 0);
 
-    fsgea::for_each(perms.begin(), perms.end(),
+    fgsea::for_each(perms.begin(), perms.end(),
         [&](std::int64_t b) {
-            std::mt19937_64 rng(fsgea::splitmix(
+            std::mt19937_64 rng(fgsea::splitmix(
                 seed ^ static_cast<std::uint64_t>(b)));
             std::vector<std::int32_t> pos(static_cast<std::size_t>(k));
             sampleWithoutReplacement(n, k, std::span<std::int32_t>(pos), rng);
@@ -63,7 +63,7 @@ inline ObservedEs observedEs(
         // edge is undefined and any downstream interpretation would be
         // misleading. Fail loud.
         throw std::domain_error(
-            "fsgea: observed enrichment score is zero for this gene set; "
+            "fgsea: observed enrichment score is zero for this gene set; "
             "the leading edge is undefined. Check that the gene set has "
             "non-zero overlap with `stats` and that not all member statistics "
             "are zero.");
@@ -77,4 +77,4 @@ inline ObservedEs observedEs(
     return {r.es, std::vector<std::int32_t>(begin, end)};
 }
 
-} // namespace fsgea::cpu
+} // namespace fgsea::cpu

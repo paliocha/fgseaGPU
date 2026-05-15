@@ -1,4 +1,4 @@
-#' fsgeaGPU: GPU-accelerated fast gene set enrichment analysis
+#' fgseaGPU: GPU-accelerated fast gene set enrichment analysis
 #'
 #' Drop-in re-implementation of the upstream \pkg{fgsea} algorithms with
 #' a Torch backend that runs the embarrassingly-parallel permutation null
@@ -89,7 +89,7 @@ fgseaSimple <- function(pathways,
     stats <- .prepareStats(stats)
     positions_z <- .pathwayPositions(pathways, stats)
 
-    res <- .Call("_fsgeaGPU_fsgea_run_cpp",
+    res <- .Call("_fgseaGPU_fgsea_run_cpp",
                  as.numeric(stats),
                  positions_z,
                  as.character(names(pathways)),
@@ -101,7 +101,7 @@ fgseaSimple <- function(pathways,
                  as.integer(seed),
                  device,
                  as.numeric(gpuMemoryGiB),
-                 PACKAGE = "fsgeaGPU")
+                 PACKAGE = "fgseaGPU")
 
     le_names <- lapply(res$leadingEdge, function(idx) names(stats)[idx])
     out <- data.table::data.table(
@@ -155,7 +155,7 @@ fgseaMultilevel <- function(pathways,
     stats <- .prepareStats(stats)
     positions_z <- .pathwayPositions(pathways, stats)
 
-    res <- .Call("_fsgeaGPU_fsgea_multilevel_cpp",
+    res <- .Call("_fgseaGPU_fgsea_multilevel_cpp",
                  as.numeric(stats),
                  positions_z,
                  as.character(names(pathways)),
@@ -167,7 +167,7 @@ fgseaMultilevel <- function(pathways,
                  as.integer(seed),
                  as.integer(minSize),
                  as.integer(maxSize),
-                 PACKAGE = "fsgeaGPU")
+                 PACKAGE = "fgseaGPU")
 
     le_names <- lapply(res$leadingEdge, function(idx) names(stats)[idx])
     out <- data.table::data.table(
@@ -218,7 +218,7 @@ fora <- function(pathways, genes, universe,
         sort.int(as.integer(stats::na.omit(idx) - 1L))
     })
 
-    res <- .Call("_fsgeaGPU_fsgea_fora_cpp",
+    res <- .Call("_fgseaGPU_fgsea_fora_cpp",
                  as.integer(length(universe)),
                  as.integer(length(queryIdx)),
                  as.integer(queryIdx - 1L),
@@ -226,7 +226,7 @@ fora <- function(pathways, genes, universe,
                  as.character(names(pathways)),
                  as.integer(minSize),
                  as.integer(maxSize),
-                 PACKAGE = "fsgeaGPU")
+                 PACKAGE = "fgseaGPU")
 
     overlapGeneNames <- lapply(res$overlapGenes, function(idx) universe[idx])
     out <- data.table::data.table(
@@ -317,7 +317,7 @@ fgseaPhenotype <- function(pathways,
     # is exactly the byte order we want for exprs[g, s] = flat[g * S + s].
     exprs_rm <- as.numeric(t(exprs))
 
-    res <- .Call("_fsgeaGPU_fsgea_phenotype_cpp",
+    res <- .Call("_fgseaGPU_fgsea_phenotype_cpp",
                  exprs_rm,
                  as.integer(nrow(exprs)),
                  as.integer(ncol(exprs)),
@@ -332,7 +332,7 @@ fgseaPhenotype <- function(pathways,
                  as.integer(maxSize),
                  as.integer(seed),
                  device,
-                 PACKAGE = "fsgeaGPU")
+                 PACKAGE = "fgseaGPU")
 
     # Leading-edge indices are gene row positions (1-based); map back to IDs.
     le_names <- lapply(res$leadingEdge, function(idx) gene_ids[idx])
@@ -368,12 +368,12 @@ calcGseaStat <- function(stats,
                          gseaParam = 1,
                          scoreType = c("std", "pos", "neg")) {
     scoreType <- match.arg(scoreType)
-    .Call("_fsgeaGPU_fsgea_calc_gsea_stat_cpp",
+    .Call("_fgseaGPU_fgsea_calc_gsea_stat_cpp",
           as.numeric(stats),
           as.integer(selectedStats),
           as.numeric(gseaParam),
           scoreType,
-          PACKAGE = "fsgeaGPU")
+          PACKAGE = "fgseaGPU")
 }
 
 #' Query or set the default execution device
@@ -382,7 +382,7 @@ calcGseaStat <- function(stats,
 #'   missing.
 #' @return The resolved device string.
 #' @export
-fsgeaDevice <- local({
+fgseaDevice <- local({
     .current <- "auto"
     function(device) {
         if (missing(device)) return(.current)
@@ -397,6 +397,6 @@ fsgeaDevice <- local({
 #' @return A list: \code{torch_built} (logical), \code{device} (resolved),
 #'   \code{concurrency} (CPU thread count).
 #' @export
-fsgeaBackendInfo <- function() {
-    .Call("_fsgeaGPU_fsgea_backend_info_cpp", PACKAGE = "fsgeaGPU")
+fgseaBackendInfo <- function() {
+    .Call("_fgseaGPU_fgsea_backend_info_cpp", PACKAGE = "fgseaGPU")
 }

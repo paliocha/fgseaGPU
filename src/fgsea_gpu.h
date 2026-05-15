@@ -1,4 +1,4 @@
-// fsgea_gpu.h — batched ES kernel implemented in LibTorch.
+// fgsea_gpu.h — batched ES kernel implemented in LibTorch.
 //
 // Strategy: for a fixed pathway size k and batch size B, draw B random
 // length-k position sets, build a [B, n] dense contribution tensor, do a
@@ -6,23 +6,23 @@
 // the permutation null into three fused tensor ops on the device.
 //
 // Memory bound: a single mini-batch occupies 8 * B * n bytes. The dispatcher
-// (fsgea_dispatch.h) splits B into chunks under a configurable budget.
+// (fgsea_dispatch.h) splits B into chunks under a configurable budget.
 //
-// Build flag: define FSGEA_WITH_TORCH and link against LibTorch to enable.
+// Build flag: define FGSEA_WITH_TORCH and link against LibTorch to enable.
 
 #pragma once
 
-#include "fsgea_core.h"
+#include "fgsea_core.h"
 
 #include <optional>
 #include <string>
 #include <string_view>
 
-#ifdef FSGEA_WITH_TORCH
+#ifdef FGSEA_WITH_TORCH
 #  include <torch/torch.h>
 #endif
 
-namespace fsgea::gpu {
+namespace fgsea::gpu {
 
 enum class Device : std::uint8_t { CPU, CUDA, MPS };
 
@@ -36,7 +36,7 @@ inline std::string_view deviceName(Device d) noexcept {
 }
 
 [[nodiscard]] inline Device resolveDevice(std::string_view hint) {
-#ifdef FSGEA_WITH_TORCH
+#ifdef FGSEA_WITH_TORCH
     if (hint == "cpu")  return Device::CPU;
     if (hint == "cuda" || hint == "rocm")
         return torch::cuda::is_available() ? Device::CUDA : Device::CPU;
@@ -53,14 +53,14 @@ inline std::string_view deviceName(Device d) noexcept {
 }
 
 [[nodiscard]] constexpr bool torchAvailable() noexcept {
-#ifdef FSGEA_WITH_TORCH
+#ifdef FGSEA_WITH_TORCH
     return true;
 #else
     return false;
 #endif
 }
 
-#ifdef FSGEA_WITH_TORCH
+#ifdef FGSEA_WITH_TORCH
 
 inline torch::Device asTorchDevice(Device d) {
     switch (d) {
@@ -171,6 +171,6 @@ inline torch::Tensor observedEsBatch(
     return out;
 }
 
-#endif // FSGEA_WITH_TORCH
+#endif // FGSEA_WITH_TORCH
 
-} // namespace fsgea::gpu
+} // namespace fgsea::gpu

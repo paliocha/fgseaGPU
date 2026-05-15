@@ -1,4 +1,4 @@
-// fsgea_phenotype_gpu.h — LibTorch backend for phenotype-permutation GSEA.
+// fgsea_phenotype_gpu.h — LibTorch backend for phenotype-permutation GSEA.
 //
 // Three GPU passes per mini-batch of B permutations:
 //
@@ -30,26 +30,26 @@
 // Memory cost: dominant tensors are O(G · B). At G=20 k, B=10 k, FP64
 // that's 1.6 GB — comfortable on an RTX Pro 6000 Blackwell (96 GB).
 // For much larger B the dispatcher chunks along the batch dim under a
-// configurable budget (same pattern as fsgea_dispatch.h).
+// configurable budget (same pattern as fgsea_dispatch.h).
 
-// Included from fsgea_phenotype.h AFTER the Input/Metric types are
+// Included from fgsea_phenotype.h AFTER the Input/Metric types are
 // defined. Don't include this header directly.
 
 #pragma once
 
-#include "fsgea_core.h"
-#include "fsgea_gpu.h"   // for gpu::Device + asTorchDevice
+#include "fgsea_core.h"
+#include "fgsea_gpu.h"   // for gpu::Device + asTorchDevice
 
-#ifdef FSGEA_WITH_TORCH
+#ifdef FGSEA_WITH_TORCH
 #  include <torch/torch.h>
 #endif
 
 #include <span>
 #include <vector>
 
-namespace fsgea::phenotype::gpu {
+namespace fgsea::phenotype::gpu {
 
-#ifdef FSGEA_WITH_TORCH
+#ifdef FGSEA_WITH_TORCH
 
 namespace detail {
 
@@ -225,6 +225,6 @@ inline torch::Tensor runBatch(
     return out;
 }
 
-#endif // FSGEA_WITH_TORCH
+#endif // FGSEA_WITH_TORCH
 
-} // namespace fsgea::phenotype::gpu
+} // namespace fgsea::phenotype::gpu

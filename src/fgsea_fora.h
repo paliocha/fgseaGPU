@@ -1,4 +1,4 @@
-// fsgea_fora.h — over-representation analysis via the hypergeometric tail.
+// fgsea_fora.h — over-representation analysis via the hypergeometric tail.
 //
 // For each pathway we test whether the overlap with a query gene set is
 // larger than expected under uniform sampling from the universe. The test
@@ -10,12 +10,12 @@
 // q the observed overlap. We compute it in log space via lgamma to stay
 // stable for large universes.
 //
-// Embarrassingly parallel across pathways — fsgea::par.
+// Embarrassingly parallel across pathways — fgsea::par.
 
 #pragma once
 
-#include "fsgea_exec.h"
-#include "fsgea_qvalue.h"
+#include "fgsea_exec.h"
+#include "fgsea_qvalue.h"
 
 #include <algorithm>
 #include <cmath>
@@ -26,7 +26,7 @@
 #include <string>
 #include <vector>
 
-namespace fsgea::fora {
+namespace fgsea::fora {
 
 struct Input {
     std::int64_t universeSize{};                               // N
@@ -122,7 +122,7 @@ inline TailAndPmf upperTailAndPmf(std::int64_t q, std::int64_t N,
     std::vector<std::size_t> outIdx(kept.size());
     std::iota(outIdx.begin(), outIdx.end(), 0);
 
-    fsgea::for_each(outIdx.begin(), outIdx.end(),
+    fgsea::for_each(outIdx.begin(), outIdx.end(),
         [&](std::size_t i) {
             std::size_t const pIdx = kept[i];
             auto const& members = in.pathwayMembers[pIdx]; // already sorted
@@ -161,7 +161,7 @@ inline TailAndPmf upperTailAndPmf(std::int64_t q, std::int64_t N,
     std::vector<double> midPs;
     midPs.reserve(out.size());
     for (auto const& r : out) midPs.push_back(r.midP);
-    auto qres = fsgea::qvalue::storey(midPs);
+    auto qres = fgsea::qvalue::storey(midPs);
     for (std::size_t i = 0; i < out.size(); ++i) {
         out[i].qvalue  = qres.qvalues[i];
         out[i].pi0Used = qres.pi0;
@@ -169,4 +169,4 @@ inline TailAndPmf upperTailAndPmf(std::int64_t q, std::int64_t N,
     return out;
 }
 
-} // namespace fsgea::fora
+} // namespace fgsea::fora

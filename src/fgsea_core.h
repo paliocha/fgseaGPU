@@ -1,4 +1,4 @@
-// fsgea_core.h — shared types and the CPU reference implementation.
+// fgsea_core.h — shared types and the CPU reference implementation.
 //
 // The GSEA enrichment score for a pre-ranked statistic vector r of length n
 // and a gene set S of size k at sorted positions p_0 < p_1 < ... < p_{k-1} is
@@ -31,7 +31,7 @@
 #include <string_view>
 #include <vector>
 
-namespace fsgea {
+namespace fgsea {
 
 enum class ScoreType : std::uint8_t { Std, Pos, Neg };
 
@@ -74,13 +74,13 @@ private:
 };
 
 // Accumulator with optional Neumaier compensation. Plain `+=` by default;
-// when FSGEA_PRECISE_ACCUM is defined, every add tracks a compensation
+// when FGSEA_PRECISE_ACCUM is defined, every add tracks a compensation
 // term so the effective precision stays at one machine epsilon regardless
 // of the number of summands. Useful when ES values cluster near zero and
 // pathway sizes are pathologically large (~10⁴ members).
 struct Accumulator {
     double sum{};
-#ifdef FSGEA_PRECISE_ACCUM
+#ifdef FGSEA_PRECISE_ACCUM
     double c{};
     constexpr void add(double delta) noexcept {
         double const t = sum + delta;
@@ -287,4 +287,4 @@ inline void sampleWithoutReplacement(std::int64_t n,
     std::ranges::sort(out.subspan(0, static_cast<std::size_t>(k)));
 }
 
-} // namespace fsgea
+} // namespace fgsea

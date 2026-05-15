@@ -1,6 +1,6 @@
-\name{fsgeaGPU-package}
-\alias{fsgeaGPU-package}
-\alias{fsgeaGPU}
+\name{fgseaGPU-package}
+\alias{fgseaGPU-package}
+\alias{fgseaGPU}
 \docType{package}
 \title{GPU-Accelerated Fast Gene Set Enrichment Analysis}
 \description{
@@ -23,7 +23,7 @@
 \seealso{
   \code{\link{fgsea}}, \code{\link{fgseaSimple}},
   \code{\link{fgseaMultilevel}}, \code{\link{fora}},
-  \code{\link{calcGseaStat}}, \code{\link{fsgeaDevice}},
-  \code{\link{fsgeaBackendInfo}}
+  \code{\link{calcGseaStat}}, \code{\link{fgseaDevice}},
+  \code{\link{fgseaBackendInfo}}
 }
 \keyword{package}

@@ -1,4 +1,4 @@
-// fsgea_multilevel.h — adaptive multilevel splitting Monte Carlo for very
+// fgsea_multilevel.h — adaptive multilevel splitting Monte Carlo for very
 // small GSEA p-values.
 //
 // The algorithm (Korotkevich, Sukhov, Sergushichev 2021) layers level
@@ -11,14 +11,14 @@
 //
 // Each MCMC chain is sequential (each move conditions on the previous
 // state), so the parallelism here comes from running pathways concurrently
-// via fsgea::par. The GPU path doesn't help — this is a
+// via fgsea::par. The GPU path doesn't help — this is a
 // fundamentally serial-per-chain algorithm and that's the price of being
 // able to probe p-values down to 1e-50.
 
 #pragma once
 
-#include "fsgea_core.h"
-#include "fsgea_exec.h"
+#include "fgsea_core.h"
+#include "fgsea_exec.h"
 
 #include <algorithm>
 #include <cmath>
@@ -28,7 +28,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace fsgea::multilevel {
+namespace fgsea::multilevel {
 
 struct Config {
     std::int64_t sampleSize{101};   // chains kept per level; must be odd
@@ -326,7 +326,7 @@ struct PathwayMlResult {
         if (scoreType != ScoreType::Std) return scoreType;
         return es >= 0 ? ScoreType::Pos : ScoreType::Neg;
     };
-    fsgea::for_each(idx.begin(), idx.end(),
+    fgsea::for_each(idx.begin(), idx.end(),
         [&](std::size_t i) {
             auto const& pos = pathwayPositions[i];
             auto const obs = calcEs(stats,
@@ -334,7 +334,7 @@ struct PathwayMlResult {
                                     gseaParam, scoreType);
 
             Config local = cfg;
-            local.seed = static_cast<std::int64_t>(fsgea::splitmix(
+            local.seed = static_cast<std::int64_t>(fgsea::splitmix(
                 static_cast<std::uint64_t>(cfg.seed) ^
                 static_cast<std::uint64_t>(i)));
 
@@ -348,4 +348,4 @@ struct PathwayMlResult {
     return out;
 }
 
-} // namespace fsgea::multilevel
+} // namespace fgsea::multilevel

@@ -2,7 +2,7 @@ name: Torch nightly
 
 # Builds the package against LibTorch (CPU build) and runs the testthat
 # suite. GitHub Actions runners don't have GPUs, so the resolved device is
-# always "cpu" — the value of this job is verifying that the FSGEA_WITH_TORCH
+# always "cpu" — the value of this job is verifying that the FGSEA_WITH_TORCH
 # code path *compiles* and *links* against current LibTorch releases, that
 # the runtime device-detection logic gracefully falls back to CPU, and that
 # CPU results remain consistent with the Torch-disabled build.
@@ -69,13 +69,13 @@ jobs:
 
       - name: Install package with Torch backend
         env:
-          FSGEA_TORCH: '1'
-          FSGEA_TORCH_HOME: ${{ env.LIBTORCH_HOME }}
+          FGSEA_TORCH: '1'
+          FGSEA_TORCH_HOME: ${{ env.LIBTORCH_HOME }}
         run: R CMD INSTALL --no-multiarch --with-keep.source .
 
       - name: Verify backend info reports torch_built = TRUE
         run: |
-          info <- fsgeaGPU::fsgeaBackendInfo()
+          info <- fgseaGPU::fgseaBackendInfo()
           cat("backend info:\n"); str(info)
           stopifnot(isTRUE(info$torch_built))
           stopifnot(info$device == "cpu")   # no GPU on CI runners
@@ -83,6 +83,6 @@ jobs:
 
       - name: Run testthat
         env:
-          FSGEA_TORCH_HOME: ${{ env.LIBTORCH_HOME }}
+          FGSEA_TORCH_HOME: ${{ env.LIBTORCH_HOME }}
           LD_LIBRARY_PATH: ${{ env.LIBTORCH_HOME }}/lib
         run: Rscript -e 'testthat::test_local()'

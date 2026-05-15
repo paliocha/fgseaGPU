@@ -1,12 +1,12 @@
-# fsgea-gpu
+# fgseaGPU
 
-[![R-CMD-check](https://github.com/paliocha/fsgea-gpu/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/paliocha/fsgea-gpu/actions/workflows/R-CMD-check.yaml)
-[![C++ tests](https://github.com/paliocha/fsgea-gpu/actions/workflows/cpp.yaml/badge.svg)](https://github.com/paliocha/fsgea-gpu/actions/workflows/cpp.yaml)
-[![Lint](https://github.com/paliocha/fsgea-gpu/actions/workflows/lint.yaml/badge.svg)](https://github.com/paliocha/fsgea-gpu/actions/workflows/lint.yaml)
-[![Coverage](https://github.com/paliocha/fsgea-gpu/actions/workflows/coverage.yaml/badge.svg)](https://github.com/paliocha/fsgea-gpu/actions/workflows/coverage.yaml)
-[![Torch nightly](https://github.com/paliocha/fsgea-gpu/actions/workflows/torch-nightly.yaml/badge.svg)](https://github.com/paliocha/fsgea-gpu/actions/workflows/torch-nightly.yaml)
+[![R-CMD-check](https://github.com/paliocha/fgseaGPU/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/paliocha/fgseaGPU/actions/workflows/R-CMD-check.yaml)
+[![C++ tests](https://github.com/paliocha/fgseaGPU/actions/workflows/cpp.yaml/badge.svg)](https://github.com/paliocha/fgseaGPU/actions/workflows/cpp.yaml)
+[![Lint](https://github.com/paliocha/fgseaGPU/actions/workflows/lint.yaml/badge.svg)](https://github.com/paliocha/fgseaGPU/actions/workflows/lint.yaml)
+[![Coverage](https://github.com/paliocha/fgseaGPU/actions/workflows/coverage.yaml/badge.svg)](https://github.com/paliocha/fgseaGPU/actions/workflows/coverage.yaml)
+[![Torch nightly](https://github.com/paliocha/fgseaGPU/actions/workflows/torch-nightly.yaml/badge.svg)](https://github.com/paliocha/fgseaGPU/actions/workflows/torch-nightly.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![DeepWiki](https://img.shields.io/badge/DeepWiki-paliocha%2Ffsgea--gpu-blue.svg?logo=bookstack)](https://deepwiki.com/paliocha/fsgea-gpu)
+[![DeepWiki](https://img.shields.io/badge/DeepWiki-paliocha%2FfgseaGPU-blue.svg?logo=bookstack)](https://deepwiki.com/paliocha/fgseaGPU)
 
 GPU-accelerated **F**ast pre-ranked **G**ene **S**et **E**nrichment **A**nalysis.
 A re-implementation of [`alserglab/fgsea`](https://github.com/alserglab/fgsea)
@@ -29,22 +29,22 @@ cumsum, reduce) and run permutations by the million.
 ## Project layout
 
 ```
-fsgea-gpu/
+fgseaGPU/
 ├── DESCRIPTION                     # R package metadata
 ├── NAMESPACE
 ├── LICENSE                         # MIT, with upstream attribution
 ├── R/fgsea.R                       # public R API
 ├── src/
-│   ├── fsgea_core.h                # algorithm definition + types
-│   ├── fsgea_cpu.h                 # std::execution CPU backend
-│   ├── fsgea_gpu.h                 # LibTorch GPU backend (opt-in)
-│   ├── fsgea_dispatch.h            # picks device, chunks batch
+│   ├── fgsea_core.h                # algorithm definition + types
+│   ├── fgsea_cpu.h                 # std::execution CPU backend
+│   ├── fgsea_gpu.h                 # LibTorch GPU backend (opt-in)
+│   ├── fgsea_dispatch.h            # picks device, chunks batch
 │   ├── rcpp_glue.cpp               # R <-> C++ marshalling
 │   ├── RcppExports.cpp
 │   └── Makevars                    # R build (Linux, macOS)
 ├── tests/testthat/                 # R-side tests, incl. vs upstream fgsea
 ├── tests/cpp/test_core.cpp         # standalone C++ unit tests
-├── bench/fsgea_bench.cpp           # CLI benchmark
+├── bench/fgsea_bench.cpp           # CLI benchmark
 └── CMakeLists.txt                  # standalone C++ build
 ```
 
@@ -55,8 +55,8 @@ fsgea-gpu/
 ```r
 # In R, with the working directory at the repo root:
 install.packages(".", repos = NULL, type = "source")
-library(fsgeaGPU)
-fsgeaBackendInfo()
+library(fgseaGPU)
+fgseaBackendInfo()
 # $torch_built FALSE   $device "cpu"   $concurrency 16
 ```
 
@@ -65,9 +65,9 @@ fsgeaBackendInfo()
 ```bash
 # Grab LibTorch from https://pytorch.org/get-started/locally/ (cxx11 ABI)
 # Then point R at it:
-export FSGEA_TORCH=1
-export FSGEA_TORCH_HOME=$HOME/opt/libtorch
-export FSGEA_TORCH_CUDA=1   # if your LibTorch is a CUDA build
+export FGSEA_TORCH=1
+export FGSEA_TORCH_HOME=$HOME/opt/libtorch
+export FGSEA_TORCH_CUDA=1   # if your LibTorch is a CUDA build
 R CMD INSTALL .
 ```
 
@@ -84,18 +84,18 @@ one machine epsilon regardless of summand count, build with the
 opt-in Neumaier path:
 
 ```bash
-FSGEA_PRECISE=1 R CMD INSTALL .
+FGSEA_PRECISE=1 R CMD INSTALL .
 ```
 
 Cost when enabled: two extra floating-point adds and one compare per
-gene-set member walked. Combinable with `FSGEA_TORCH=1`.
+gene-set member walked. Combinable with `FGSEA_TORCH=1`.
 
 ## Usage
 
 Three entry points mirror the upstream API:
 
 ```r
-library(fsgeaGPU)
+library(fgseaGPU)
 data(examplePathways, package = "fgsea")
 data(exampleRanks,    package = "fgsea")
 
@@ -207,8 +207,8 @@ If you need vanilla BH for compatibility, run
 The repo is initialised locally. To fork to your account:
 
 ```bash
-cd ~/Documents/Claude/Projects/fsgea-gpu
-gh repo create paliocha/fsgea-gpu \
+cd ~/Documents/Claude/Projects/fgseaGPU
+gh repo create paliocha/fgseaGPU \
     --source=. --public \
     --description "GPU/Torch-backed fast preranked GSEA" \
     --push
