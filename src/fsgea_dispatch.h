@@ -12,6 +12,7 @@
 #include "fsgea_gpu.h"
 #include "fsgea_qvalue.h"
 
+#include <map>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -37,6 +38,9 @@ namespace detail {
 inline std::int64_t chunkBatchSize(std::int64_t n, std::int64_t bytesBudget) {
     // 8 bytes/elem for float64; we hold one [B, n] step tensor plus a [B, n]
     // cumsum tensor simultaneously, so ~16 bytes per (b, j) cell. Add slack.
+    // The M*B output buffer used by the batched GPU path adds 8*M bytes per
+    // permutation row — negligible relative to the [B, n] tensors for any
+    // realistic n, so we don't reserve a slice of the budget for it here.
     constexpr std::int64_t bytesPerCell = 24;
     std::int64_t maxB = bytesBudget / (bytesPerCell * std::max<std::int64_t>(n, 1));
     return std::max<std::int64_t>(maxB, 1);
@@ -77,36 +81,63 @@ inline std::int64_t chunkBatchSize(std::int64_t n, std::int64_t bytesBudget) {
 
     std::span<double const> statsSpan(in.stats);
 
+    // Observed ES (cheap, O(k) per pathway — always CPU). Compute up front so
+    // we can defer per-pathway summarisation until after the batched GPU pass.
+    struct ObsRecord {
+        double                       es;
+        std::vector<std::int32_t>    leadingEdge;
+        std::int64_t                 k;
+    };
+    std::vector<ObsRecord> obsCache(keep.size());
     for (std::size_t i = 0; i < keep.size(); ++i) {
         auto pIdx = keep[i];
         auto const& positions = in.pathwayPositions[pIdx];
-        auto k = static_cast<std::int64_t>(positions.size());
-
-        // Observed pass (cheap, always on CPU — it's O(k))
         auto obs = cpu::observedEs(statsSpan,
                                    std::span<std::int32_t const>(positions),
                                    in.gseaParam, in.scoreType);
+        obsCache[i].es          = obs.es;
+        obsCache[i].leadingEdge = std::move(obs.leadingEdge);
+        obsCache[i].k           = static_cast<std::int64_t>(positions.size());
+    }
 
-        // Permutation null
-        std::vector<double> permEs;
-        permEs.reserve(static_cast<std::size_t>(in.nperm));
+    // Permutation null storage, one vector per kept pathway.
+    std::vector<std::vector<double>> permEsAll(keep.size());
+    for (auto& v : permEsAll) v.reserve(static_cast<std::size_t>(in.nperm));
+
+    // Bucket kept pathways by their set size k. The permutation null under the
+    // simple-permutation model depends only on (n, k, stats, gseaParam,
+    // scoreType) — so all same-k pathways share one Monte Carlo null. We draw
+    // it once per bucket and copy into each member's permEs vector. Big win
+    // on real workloads: MSigDB hallmark sets have ~50 distinct sizes covering
+    // 50× more pathways, so the kernel work drops by that ratio. This is also
+    // what upstream fgseaSimple does.
+    std::map<std::int64_t, std::vector<std::size_t>> by_k;
+    for (std::size_t i = 0; i < keep.size(); ++i) {
+        by_k[obsCache[i].k].push_back(i);
+    }
+
+    for (auto const& kv : by_k) {
+        auto const k_u  = kv.first;
+        auto const& grp = kv.second;
+
+        std::vector<double> shared_null;
+        shared_null.reserve(static_cast<std::size_t>(in.nperm));
 
 #ifdef FSGEA_WITH_TORCH
         if (useGpu) {
-            auto td = gpu::asTorchDevice(device);
-            auto chunk = detail::chunkBatchSize(n, in.gpuMemoryBudgetBytes);
+            auto const chunk = detail::chunkBatchSize(n, in.gpuMemoryBudgetBytes);
             std::int64_t done = 0;
             while (done < in.nperm) {
-                auto B = std::min<std::int64_t>(chunk, in.nperm - done);
+                auto const B = std::min<std::int64_t>(chunk, in.nperm - done);
                 std::int64_t chunkSeed = static_cast<std::int64_t>(
                     fsgea::splitmix(static_cast<std::uint64_t>(in.seed) ^
-                                     (static_cast<std::uint64_t>(pIdx) << 17) ^
+                                     (static_cast<std::uint64_t>(k_u) << 17) ^
                                      static_cast<std::uint64_t>(done)));
                 auto es = gpu::permEsBatchTorch(
-                    *statsTensor, k, B, in.gseaParam, in.scoreType, chunkSeed)
+                    *statsTensor, k_u, B, in.gseaParam, in.scoreType, chunkSeed)
                     .to(torch::kCPU).contiguous();
                 auto a = es.accessor<double, 1>();
-                for (std::int64_t b = 0; b < B; ++b) permEs.push_back(a[b]);
+                for (std::int64_t b = 0; b < B; ++b) shared_null.push_back(a[b]);
                 done += B;
             }
         } else
@@ -114,21 +145,27 @@ inline std::int64_t chunkBatchSize(std::int64_t n, std::int64_t bytesBudget) {
         {
             std::uint64_t seed = fsgea::splitmix(
                 static_cast<std::uint64_t>(in.seed) ^
-                (static_cast<std::uint64_t>(pIdx) << 17));
-            permEs = cpu::permEsBatch(statsSpan, k, in.nperm,
-                                      in.gseaParam, in.scoreType, seed);
+                (static_cast<std::uint64_t>(k_u) << 17));
+            shared_null = cpu::permEsBatch(statsSpan, k_u, in.nperm,
+                                           in.gseaParam, in.scoreType, seed);
         }
 
-        auto summary = summarisePermutations(obs.es, permEs, in.scoreType);
+        for (auto i : grp) permEsAll[i] = shared_null;
+    }
+
+    for (std::size_t i = 0; i < keep.size(); ++i) {
+        auto pIdx   = keep[i];
+        auto const& obs = obsCache[i];
+        auto summary = summarisePermutations(obs.es, permEsAll[i], in.scoreType);
 
         auto& r = results[i];
         r.pathway      = in.pathwayNames[pIdx];
         r.es           = obs.es;
         r.nes          = summary.nes;
         r.pval         = summary.pval;
-        r.size         = k;
+        r.size         = obs.k;
         r.nMoreExtreme = summary.nMoreExtreme;
-        r.leadingEdge  = std::move(obs.leadingEdge);
+        r.leadingEdge  = obsCache[i].leadingEdge;
     }
 
     // Storey-Tibshirani q-values across kept pathways.
