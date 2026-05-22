@@ -373,6 +373,137 @@ List fgsea_phenotype_cpp(
 }
 
 // [[Rcpp::export]]
+// Batch fgsea: run one call per element of stats_list.
+// Pre-sorted stats vectors and per-HOG pathway positions are prepared on the R
+// side (see fgseaBatch() in R/fgsea.R).  On CPU the HOGs are dispatched in
+// parallel via std::execution::par_unseq (TBB).  On GPU they are serialised so
+// each call can saturate the device.
+List fgsea_batch_cpp(
+    List stats_list,          // H named NumericVectors, each already sorted decreasing
+    List positions_list,      // H Lists of IntegerVectors (0-based sorted positions)
+    CharacterVector pathway_names,
+    int nperm,
+    double gsea_param,
+    std::string score_type,
+    int min_size,
+    int max_size,
+    int seed,
+    std::string device,
+    double gpu_memory_gib)
+{
+    int const H = static_cast<int>(stats_list.size());
+
+    // ---- shared pathway name vector (built once) ----
+    std::vector<std::string> pnames;
+    pnames.reserve(pathway_names.size());
+    for (R_xlen_t i = 0; i < pathway_names.size(); ++i)
+        pnames.emplace_back(Rcpp::as<std::string>(pathway_names[i]));
+
+    // ---- pre-convert all R inputs to C++ (single-threaded, Rcpp-safe) ----
+    std::vector<fgsea::FgseaInput> inputs(static_cast<std::size_t>(H));
+    for (int h = 0; h < H; ++h) {
+        auto& in = inputs[static_cast<std::size_t>(h)];
+
+        NumericVector sv = stats_list[h];
+        in.stats.assign(sv.begin(), sv.end());
+        in.pathwayNames = pnames;          // shared copy
+
+        List ph = positions_list[h];
+        in.pathwayPositions.reserve(static_cast<std::size_t>(ph.size()));
+        for (R_xlen_t p = 0; p < ph.size(); ++p) {
+            IntegerVector pv = ph[p];
+            in.pathwayPositions.emplace_back(pv.begin(), pv.end());
+        }
+
+        in.nperm      = static_cast<std::int64_t>(nperm);
+        in.gseaParam  = gsea_param;
+        in.scoreType  = parseScore(score_type);
+        in.minSize    = static_cast<std::int64_t>(min_size);
+        in.maxSize    = static_cast<std::int64_t>(max_size);
+        in.seed       = static_cast<std::int64_t>(seed);
+        in.deviceHint = device;
+        in.gpuMemoryBudgetBytes =
+            static_cast<std::int64_t>(gpu_memory_gib * static_cast<double>(1ULL << 30));
+    }
+
+    // ---- dispatch ----
+    std::vector<std::vector<fgsea::PathwayResult>> all_results(
+        static_cast<std::size_t>(H));
+
+    bool const useGpu =
+        (fgsea::gpu::resolveDevice(device) != fgsea::gpu::Device::CPU);
+
+    if (useGpu) {
+        // GPU: serial — each call saturates the device
+        for (int h = 0; h < H; ++h) {
+            try {
+                all_results[static_cast<std::size_t>(h)] =
+                    fgsea::runFgsea(inputs[static_cast<std::size_t>(h)]);
+            } catch (std::exception const& e) {
+                all_results[static_cast<std::size_t>(h)] = {};
+                // swallow per-HOG errors; caller can detect via missing rows
+            }
+        }
+    } else {
+        // CPU: parallel over HOGs (TBB work-steals pathway-level par inside each call)
+        std::vector<int> hog_range(static_cast<std::size_t>(H));
+        std::iota(hog_range.begin(), hog_range.end(), 0);
+        std::for_each(
+            std::execution::par_unseq,
+            hog_range.begin(), hog_range.end(),
+            [&](int h) {
+                try {
+                    all_results[static_cast<std::size_t>(h)] =
+                        fgsea::runFgsea(inputs[static_cast<std::size_t>(h)]);
+                } catch (...) {
+                    all_results[static_cast<std::size_t>(h)] = {};
+                }
+            });
+    }
+
+    // ---- assemble flat output ----
+    std::vector<int>         hog_idx_v;
+    std::vector<std::string> pathway_v;
+    std::vector<double>      pval_v, padj_v, es_v, nes_v;
+    std::vector<int>         size_v, nmore_v;
+    List                     le_list;
+    double                   pi0Used = 1.0;
+
+    for (int h = 0; h < H; ++h) {
+        auto const& res_h = all_results[static_cast<std::size_t>(h)];
+        if (res_h.empty()) continue;
+        pi0Used = res_h.front().pi0Used;   // last non-empty HOG's pi0
+        for (auto const& r : res_h) {
+            hog_idx_v.push_back(h + 1);    // 1-indexed for R
+            pathway_v.push_back(r.pathway);
+            pval_v.push_back(r.pval);
+            padj_v.push_back(r.padj);
+            es_v.push_back(r.es);
+            nes_v.push_back(r.nes);
+            size_v.push_back(static_cast<int>(r.size));
+            nmore_v.push_back(static_cast<int>(r.nMoreExtreme));
+            IntegerVector le(r.leadingEdge.size());
+            for (std::size_t j = 0; j < r.leadingEdge.size(); ++j)
+                le[static_cast<R_xlen_t>(j)] =
+                    static_cast<int>(r.leadingEdge[j]) + 1;  // 1-indexed for R
+            le_list.push_back(le);
+        }
+    }
+
+    return List::create(
+        _["hog_idx"]      = wrap(hog_idx_v),
+        _["pathway"]      = wrap(pathway_v),
+        _["pval"]         = wrap(pval_v),
+        _["padj"]         = wrap(padj_v),
+        _["ES"]           = wrap(es_v),
+        _["NES"]          = wrap(nes_v),
+        _["nMoreExtreme"] = wrap(nmore_v),
+        _["size"]         = wrap(size_v),
+        _["leadingEdge"]  = le_list,
+        _["pi0"]          = pi0Used);
+}
+
+// [[Rcpp::export]]
 List fgsea_backend_info_cpp() {
     auto const dev = fgsea::gpu::resolveDevice("auto");
     bool torch_built = fgsea::gpu::torchAvailable();
