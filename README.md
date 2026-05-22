@@ -106,6 +106,12 @@ res <- fgsea(examplePathways, exampleRanks)
 res_simple <- fgseaSimple(examplePathways, exampleRanks,
                           nperm = 10000, device = "auto")
 
+# Batch mode: many independent queries over the same pathway set in one C++ call
+# stats_list is a named list of pre-ranked numeric vectors (one per query)
+stats_list <- list(query1 = exampleRanks, query2 = rev(exampleRanks))
+res_batch  <- fgseaBatch(stats_list, examplePathways, nperm = 1000, device = "auto")
+# Returns a data.table with all results plus a hog_idx column identifying the query
+
 # Over-representation analysis (Fisher / hypergeometric)
 foraRes <- fora(examplePathways,
                 genes    = tail(names(exampleRanks), 200),
@@ -115,12 +121,21 @@ foraRes <- fora(examplePathways,
 Routing rule: `fgsea(...)` delegates to `fgseaMultilevel` by default, or to
 `fgseaSimple` if you supply `nperm` — matching the upstream convention.
 
-| Entry point        | Best for                                        | Backend                       |
-|--------------------|-------------------------------------------------|-------------------------------|
-| `fgseaSimple`      | Many permutations, preranked stats              | GPU (LibTorch)                |
-| `fgseaMultilevel`  | Accurate small p-values (down to eps)           | CPU `par_unseq`               |
-| `fgseaPhenotype`   | Classical phenotype-permutation on a matrix     | CPU `par_unseq`, GPU matmul   |
-| `fora`             | Set-based over-representation                   | CPU `par_unseq`               |
+| Entry point        | Best for                                              | Backend                      |
+|--------------------|-------------------------------------------------------|------------------------------|
+| `fgseaSimple`      | Many permutations, preranked stats                    | GPU (LibTorch)               |
+| `fgseaMultilevel`  | Accurate small p-values (down to eps)                 | CPU `par_unseq`              |
+| `fgseaBatch`       | Many independent queries over the same pathway set    | GPU serial / CPU `par_unseq` |
+| `fgseaPhenotype`   | Classical phenotype-permutation on a matrix           | CPU `par_unseq`, GPU matmul  |
+| `fora`             | Set-based over-representation                         | CPU `par_unseq`              |
+
+`fgseaBatch` accepts a list of H pre-ranked stats vectors and a shared
+pathway list. Pathway positions are precomputed on the R side, then all
+queries are dispatched in a single C++ call — no R overhead between them.
+On GPU, queries run serially so each fully saturates the device. On CPU,
+`std::execution::par_unseq` (TBB) processes queries in parallel. The
+return value is a `data.table` identical to `fgseaSimple` output with an
+added integer column `hog_idx` (1-based index into `stats_list`).
 
 `fgseaPhenotype` is the Subramanian-style mode that upstream `fgsea` skips:
 input is an expression matrix plus a two-class label vector. Each

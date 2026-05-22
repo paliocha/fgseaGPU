@@ -400,3 +400,83 @@ fgseaDevice <- local({
 fgseaBackendInfo <- function() {
     .Call("_fgseaGPU_fgsea_backend_info_cpp", PACKAGE = "fgseaGPU")
 }
+
+#' Batch preranked GSEA over multiple stats vectors
+#'
+#' Runs \code{\link{fgseaSimple}} for each element of \code{stats_list} in a
+#' single C++ call.  Pathway positions are precomputed on the R side, then
+#' dispatched via a C++ loop — no R overhead between HOGs.  On CPU the HOGs
+#' are processed in parallel via \code{std::execution::par_unseq} (TBB); on
+#' GPU they are serialised so each call fully saturates the device.
+#'
+#' @param stats_list Named list of numeric vectors.  Each element is a
+#'   pre-ranked (or raw) stats vector for one query (e.g., one focal HOG).
+#'   Names of each vector must be gene identifiers matching \code{pathways}.
+#' @param pathways Named list of character vectors (gene sets).
+#' @param nperm,minSize,maxSize,gseaParam,scoreType,seed,device,gpuMemoryGiB
+#'   See \code{\link{fgseaSimple}}.
+#' @return A \code{data.table} like \code{\link{fgseaSimple}} but with an
+#'   extra integer column \code{hog_idx} — the 1-based index of the
+#'   corresponding element in \code{stats_list}.
+#' @export
+fgseaBatch <- function(stats_list,
+                       pathways,
+                       nperm        = 1000L,
+                       minSize      = 1L,
+                       maxSize      = .Machine$integer.max,
+                       gseaParam    = 1,
+                       scoreType    = c("std", "pos", "neg"),
+                       seed         = 42L,
+                       device       = c("auto", "cpu", "cuda", "mps", "rocm"),
+                       gpuMemoryGiB = 2) {
+    scoreType <- match.arg(scoreType)
+    device    <- match.arg(device)
+    stopifnot(is.list(stats_list), length(stats_list) >= 1L, is.list(pathways))
+
+    # Precompute sorted stats + per-HOG pathway positions on R side
+    sorted_list    <- lapply(stats_list, .prepareStats)
+    positions_list <- lapply(sorted_list, function(s) .pathwayPositions(pathways, s))
+
+    res <- .Call("_fgseaGPU_fgsea_batch_cpp",
+                 sorted_list,
+                 positions_list,
+                 as.character(names(pathways)),
+                 as.integer(nperm),
+                 as.numeric(gseaParam),
+                 scoreType,
+                 as.integer(minSize),
+                 as.integer(maxSize),
+                 as.integer(seed),
+                 device,
+                 as.numeric(gpuMemoryGiB),
+                 PACKAGE = "fgseaGPU")
+
+    if (length(res$pathway) == 0L) {
+        return(data.table::data.table(
+            hog_idx = integer(), pathway = character(),
+            pval = numeric(), padj = numeric(),
+            ES = numeric(), NES = numeric(),
+            nMoreExtreme = integer(), size = integer(),
+            leadingEdge = list()))
+    }
+
+    # Convert 1-based leading-edge indices back to gene names
+    le_names <- Map(function(idx, h) names(sorted_list[[h]])[idx],
+                    res$leadingEdge, res$hog_idx)
+
+    out <- data.table::data.table(
+        hog_idx      = res$hog_idx,
+        pathway      = res$pathway,
+        pval         = res$pval,
+        padj         = res$padj,
+        ES           = res$ES,
+        NES          = res$NES,
+        nMoreExtreme = res$nMoreExtreme,
+        size         = res$size,
+        leadingEdge  = le_names
+    )
+    data.table::setattr(out, "pi0", res$pi0)
+    data.table::setattr(out, "padj.method", "storey-tibshirani")
+    data.table::setorder(out, hog_idx, pval, -ES)
+    out
+}
