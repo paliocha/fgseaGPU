@@ -7,6 +7,7 @@
 #include "fgsea_fora.h"
 #include "fgsea_phenotype.h"
 #include "fgsea_qvalue.h"
+#include "fgsea_exec.h"
 
 using namespace Rcpp;
 
@@ -375,9 +376,10 @@ List fgsea_phenotype_cpp(
 // [[Rcpp::export]]
 // Batch fgsea: run one call per element of stats_list.
 // Pre-sorted stats vectors and per-HOG pathway positions are prepared on the R
-// side (see fgseaBatch() in R/fgsea.R).  On CPU the HOGs are dispatched in
-// parallel via std::execution::par_unseq (TBB).  On GPU they are serialised so
-// each call can saturate the device.
+// side (see fgseaBatch() in R/fgsea.R).  On CPU the HOGs are dispatched through
+// fgsea::for_each — parallel (TBB) where the build picked up libtbb, sequential
+// on macOS where Apple libc++ ships no parallel std::execution policies.  On
+// GPU they are serialised so each call can saturate the device.
 List fgsea_batch_cpp(
     List stats_list,          // H named NumericVectors, each already sorted decreasing
     List positions_list,      // H Lists of IntegerVectors (0-based sorted positions)
@@ -445,11 +447,12 @@ List fgsea_batch_cpp(
             }
         }
     } else {
-        // CPU: parallel over HOGs (TBB work-steals pathway-level par inside each call)
+        // CPU: parallel over HOGs where TBB available (Linux); falls back to
+        // sequential on macOS — Apple libc++ ships no parallel std::execution
+        // policy tags. Pathway-level parallelism inside each call still helps.
         std::vector<int> hog_range(static_cast<std::size_t>(H));
         std::iota(hog_range.begin(), hog_range.end(), 0);
-        std::for_each(
-            std::execution::par_unseq,
+        fgsea::for_each(
             hog_range.begin(), hog_range.end(),
             [&](int h) {
                 try {
