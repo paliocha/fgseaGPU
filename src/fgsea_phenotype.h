@@ -348,13 +348,17 @@ namespace fgsea::phenotype {
     // experiments where the matmul amortises the host→device staging cost.
     bool const use_gpu = (dev != fgsea::gpu::Device::CPU) && !useExact;
     if (use_gpu) {
-        auto const td = fgsea::gpu::asTorchDevice(dev);
+        auto const td    = fgsea::gpu::asTorchDevice(dev);
+        auto const dtype = fgsea::gpu::computeDtype(dev);
         auto const opts64 = torch::TensorOptions().dtype(torch::kFloat64);
 
-        // Stage host tensors once.
+        // Stage host tensors once.  MPS lacks float64, so we cast to
+        // computeDtype(dev) on the way to the device.
         auto exprs_t = torch::from_blob(
                 const_cast<double*>(in.exprs.data()),
-                {in.n_genes, in.n_samples}, opts64).clone().to(td);
+                {in.n_genes, in.n_samples}, opts64)
+                .to(torch::TensorOptions().device(td).dtype(dtype),
+                    /*non_blocking=*/false, /*copy=*/true);
 
         std::vector<std::int64_t> labels_i64(
             in.labels.begin(), in.labels.end());
@@ -389,7 +393,7 @@ namespace fgsea::phenotype {
             auto es = fgsea::phenotype::gpu::runBatch(
                 in, exprs_t, labels_t, pathways_t, B, chunkSeed, td);
             // es is [B, P] on device; copy to host into perm_es slice.
-            auto es_cpu = es.to(torch::kCPU).contiguous();
+            auto es_cpu = es.to(torch::kCPU).to(torch::kFloat64).contiguous();
             auto a = es_cpu.accessor<double, 2>();
             for (std::int64_t b = 0; b < B; ++b) {
                 for (std::int64_t i = 0; i < P; ++i) {

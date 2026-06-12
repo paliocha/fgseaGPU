@@ -114,6 +114,34 @@ RcppExport SEXP _fgseaGPU_fgsea_fora_cpp(
     END_RCPP
 }
 
+// fgsea_batch_cpp
+List fgsea_batch_cpp(List, List, CharacterVector, int, double,
+                     std::string, int, int, int, std::string, double);
+RcppExport SEXP _fgseaGPU_fgsea_batch_cpp(
+    SEXP stats_listSEXP, SEXP positions_listSEXP, SEXP pathway_namesSEXP,
+    SEXP npermSEXP, SEXP gseaParamSEXP, SEXP scoreTypeSEXP,
+    SEXP minSizeSEXP, SEXP maxSizeSEXP, SEXP seedSEXP,
+    SEXP deviceSEXP, SEXP gpuMemSEXP)
+{
+    BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(fgsea_batch_cpp(
+        as<List>(stats_listSEXP),
+        as<List>(positions_listSEXP),
+        as<CharacterVector>(pathway_namesSEXP),
+        as<int>(npermSEXP),
+        as<double>(gseaParamSEXP),
+        as<std::string>(scoreTypeSEXP),
+        as<int>(minSizeSEXP),
+        as<int>(maxSizeSEXP),
+        as<int>(seedSEXP),
+        as<std::string>(deviceSEXP),
+        as<double>(gpuMemSEXP)));
+    return rcpp_result_gen;
+    END_RCPP
+}
+
 // fgsea_phenotype_cpp
 List fgsea_phenotype_cpp(NumericVector, int, int, IntegerVector,
                          List, CharacterVector, int, std::string,
@@ -152,6 +180,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_fgseaGPU_fgsea_backend_info_cpp",   (DL_FUNC) &_fgseaGPU_fgsea_backend_info_cpp,    0},
     {"_fgseaGPU_fgsea_multilevel_cpp",     (DL_FUNC) &_fgseaGPU_fgsea_multilevel_cpp,     11},
     {"_fgseaGPU_fgsea_fora_cpp",           (DL_FUNC) &_fgseaGPU_fgsea_fora_cpp,            7},
+    {"_fgseaGPU_fgsea_batch_cpp",          (DL_FUNC) &_fgseaGPU_fgsea_batch_cpp,          11},
     {"_fgseaGPU_fgsea_phenotype_cpp",      (DL_FUNC) &_fgseaGPU_fgsea_phenotype_cpp,      14},
     {nullptr, nullptr, 0}
 };

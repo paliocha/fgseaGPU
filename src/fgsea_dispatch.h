@@ -72,10 +72,13 @@ inline std::int64_t chunkBatchSize(std::int64_t n, std::int64_t bytesBudget) {
     bool const useGpu = (device != gpu::Device::CPU);
     std::optional<torch::Tensor> statsTensor;
     if (useGpu) {
-        auto td = gpu::asTorchDevice(device);
+        auto td    = gpu::asTorchDevice(device);
+        auto dtype = gpu::computeDtype(device);
         statsTensor = torch::from_blob(
             const_cast<double*>(in.stats.data()),
-            {n}, torch::kFloat64).clone().to(td);
+            {n}, torch::kFloat64)
+            .to(torch::TensorOptions().device(td).dtype(dtype),
+                /*non_blocking=*/false, /*copy=*/true);
     }
 #endif
 
@@ -135,7 +138,7 @@ inline std::int64_t chunkBatchSize(std::int64_t n, std::int64_t bytesBudget) {
                                      static_cast<std::uint64_t>(done)));
                 auto es = gpu::permEsBatchTorch(
                     *statsTensor, k_u, B, in.gseaParam, in.scoreType, chunkSeed)
-                    .to(torch::kCPU).contiguous();
+                    .to(torch::kCPU).to(torch::kFloat64).contiguous();
                 auto a = es.accessor<double, 1>();
                 for (std::int64_t b = 0; b < B; ++b) shared_null.push_back(a[b]);
                 done += B;

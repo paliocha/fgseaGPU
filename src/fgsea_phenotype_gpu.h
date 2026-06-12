@@ -196,9 +196,11 @@ inline torch::Tensor runBatch(
 {
     auto const G = exprs_t.size(0);
 
-    // 1. Permute labels per row.
+    // 1. Permute labels per row.  Cast to exprs's dtype so the matmul in
+    // scoreAllGenes stays on a uniform precision (MPS = float32, otherwise
+    // float64).
     auto const labels_perm = detail::permuteLabels(labels_t, B, device, seed)
-                                  .to(torch::kFloat64);  // [B, S] in {0.0, 1.0}
+                                  .to(exprs_t.scalar_type());  // [B, S] in {0.0, 1.0}
 
     // 2. Per-(gene, perm) statistic.
     auto const stats = detail::scoreAllGenes(exprs_t, labels_perm, in.metric); // [G, B]

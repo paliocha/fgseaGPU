@@ -71,6 +71,13 @@ inline torch::Device asTorchDevice(Device d) {
     return torch::Device(torch::kCPU);
 }
 
+// MPS lacks float64 support; everywhere else we keep double precision so the
+// kernels match the CPU backend bit-for-bit. The dispatcher uploads stats
+// using this dtype and casts back to float64 on the CPU side.
+inline torch::ScalarType computeDtype(Device d) noexcept {
+    return (d == Device::MPS) ? torch::kFloat32 : torch::kFloat64;
+}
+
 // Sample B sets of k distinct positions from [0, n) on `device`. We take
 // per-row top-k of uniform noise: the indices of the k largest values are a
 // uniform k-subset of [0, n). topk is O(n log k) per row vs O(n log n) for
