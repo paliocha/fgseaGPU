@@ -174,16 +174,46 @@ List fgsea_multilevel_cpp(
     LogicalVector floored(P);
     List leadingEdge(P);
 
-    // Observed-EsRuler-derived mean ES under null is unavailable cheaply here,
-    // so NES is computed as ES / mean(|ES| of final-level sample) on the
-    // R side if a normalisation is required. We expose ES; NES defaults to NaN.
+    // NES calibration. Multilevel itself doesn't sample a uniform-null
+    // distribution (the EsRuler chains are conditioned on |ES| ≥ T_l), so
+    // we draw a small simple-permutation null per unique pathway size and
+    // feed it through summarisePermutations — same routine the fgsea() path
+    // uses, so NES has identical semantics. Cost is O(unique-k · kCalibNperm)
+    // CPU permutations; negligible compared to the multilevel inner loop.
+    constexpr std::int64_t kCalibNperm = 1000;
+    std::map<std::int64_t, std::vector<double>> calibNullByK;
+    for (R_xlen_t i = 0; i < P; ++i) {
+        auto const k = static_cast<std::int64_t>(
+            positions[static_cast<std::size_t>(i)].size());
+        if (k <= 0 || k >= n) continue;
+        if (calibNullByK.count(k)) continue;
+        std::uint64_t const calibSeed = fgsea::splitmix(
+            static_cast<std::uint64_t>(cfg.seed) ^
+            (static_cast<std::uint64_t>(k) << 17) ^
+            0x9E3779B97F4A7C15ull);
+        calibNullByK.emplace(k, fgsea::cpu::permEsBatch(
+            std::span<double const>(s), k, kCalibNperm,
+            gsea_param, scoreType, calibSeed));
+    }
+
     for (R_xlen_t i = 0; i < P; ++i) {
         auto const& m = ml[static_cast<std::size_t>(i)];
         pathway[i]  = names[static_cast<std::size_t>(i)];
         pval[i]     = m.pval;
         log2err[i]  = m.log2err;
         es[i]       = m.es;
-        nes[i]      = std::numeric_limits<double>::quiet_NaN();
+        auto const k = static_cast<std::int64_t>(
+            positions[static_cast<std::size_t>(i)].size());
+        auto const it = calibNullByK.find(k);
+        if (it != calibNullByK.end() && !it->second.empty()) {
+            auto const summary = fgsea::summarisePermutations(
+                m.es,
+                std::span<double const>(it->second),
+                scoreType);
+            nes[i] = summary.nes;
+        } else {
+            nes[i] = std::numeric_limits<double>::quiet_NaN();
+        }
         size[i]     = static_cast<int>(positions[static_cast<std::size_t>(i)].size());
         floored[i]  = m.floored;
 

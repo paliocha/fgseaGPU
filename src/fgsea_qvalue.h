@@ -38,7 +38,7 @@ struct StoreyOptions {
     std::vector<double> lambdaGrid;    // empty -> default 0.05..0.95 step 0.05
     std::int64_t        bootstrap{100};
     bool                pi0Bootstrap{true};   // false => min over lambda
-    double              pi0Floor{1e-8};
+    double              pi0Floor{0.01};
     std::uint64_t       seed{0x5EED};
 };
 
@@ -118,10 +118,15 @@ inline double pi0Bootstrap(std::vector<double> const& pvals,
     if (opts.lambdaGrid.empty()) opts.lambdaGrid = detail::defaultLambdaGrid();
 
     // pi_0 estimation strategy depends on m:
-    //   m <  kMinForStorey   → pi0 = 1.0 (classical BH; Storey is meaningless)
-    //   m >= 4 && bootstrap  → Storey 2002 bootstrap λ-selection
-    //   otherwise            → min over λ grid (sorted-bisect)
-    constexpr std::size_t kMinForStorey = 10;
+    //   m <  kMinForStorey   → pi0 = 1.0 (classical BH; Storey is meaningless
+    //                                    and the λ-bisect/bootstrap estimators
+    //                                    are wildly unstable at small m).
+    //   m >= kMinForStorey   → Storey 2002 bootstrap λ-selection or min-over-λ.
+    // After estimation, any non-finite or sub-pi0Floor value is treated as
+    // unreliable and we revert to pi0 = 1.0 (Storey collapses to BH there) —
+    // that's the documented worst-case behaviour and is what qvalue::qvalue
+    // does when its smoother is degenerate.
+    constexpr std::size_t kMinForStorey = 100;
     double pi0;
     if (pvals.size() < kMinForStorey) {
         pi0 = 1.0;
@@ -137,7 +142,11 @@ inline double pi0Bootstrap(std::vector<double> const& pvals,
         }
         pi0 = best;
     }
-    pi0 = std::clamp(pi0, opts.pi0Floor, 1.0);
+    if (!std::isfinite(pi0) || pi0 <= opts.pi0Floor) {
+        pi0 = 1.0;
+    } else {
+        pi0 = std::min(pi0, 1.0);
+    }
 
     // Compute q-values: sort p ascending, then descending running minimum.
     auto const m = pvals.size();
